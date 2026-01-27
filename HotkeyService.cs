@@ -230,13 +230,13 @@ namespace WINHOME
 
                     if (!_comboActive && _winDown && _altDown)
                     {
-                        _comboActive = true;
+                    _comboActive = true; // Set combo active
                         Logger.Log("HotkeyService: combo pressed (service)");
                         ComboPressed?.Invoke(this, EventArgs.Empty);
                     }
                     else if (_comboActive && !(_winDown && _altDown))
                     {
-                        _comboActive = false;
+                    _comboActive = false; // Reset combo active
                         Logger.Log("HotkeyService: combo released (service)");
                         ComboReleased?.Invoke(this, EventArgs.Empty);
                     }

@@ -11,6 +11,7 @@ namespace WINHOME
     public partial class MainWindow : Window
     {
         private bool _initialPositioned;
+        private ConfigWindow? _configWindow;
 
         public MainWindow()
         {
@@ -79,6 +80,12 @@ namespace WINHOME
             {
                 EnsureInitialPositionAndSize();
             }
+
+            // When window is hidden, reset pin state so next open is not pinned
+            if (!IsVisible)
+            {
+                IsPinned = false;
+            }
         }
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -88,6 +95,77 @@ namespace WINHOME
                 this.Hide();
                 e.Handled = true;
             }
+        }
+
+        private bool _pinned;
+
+        public bool IsPinned
+        {
+            get => _pinned;
+            set
+            {
+                _pinned = value;
+                // update visual of pin button background
+                try
+                {
+                    if (PinBg != null)
+                    {
+                        PinBg.Fill = _pinned ? (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#7F7F7F") : System.Windows.Media.Brushes.Transparent;
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private void PinButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Toggle pin mode: only valid for this open session
+            _pinned = !_pinned;
+            Logger.Log("PinButton clicked. pinned=" + _pinned);
+        }
+
+        private void ConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Open settings window (same size/position, darker background)
+            if (_configWindow != null)
+            {
+                try { _configWindow.Activate(); } catch { }
+                return;
+            }
+
+            _configWindow = new ConfigWindow();
+            _configWindow.Owner = this;
+            _configWindow.Width = this.Width;
+            _configWindow.Height = this.Height;
+            _configWindow.Left = this.Left;
+            _configWindow.Top = this.Top;
+            _configWindow.Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#3F3F3F");
+
+            // close config when it loses focus
+            _configWindow.Deactivated += (s, ev) =>
+            {
+                try
+                {
+                    _configWindow?.Close();
+                }
+                catch { }
+            };
+
+            _configWindow.Closed += (s, ev) => { _configWindow = null; };
+            _configWindow.Show();
+        }
+
+        public void CloseConfigWindow()
+        {
+            try
+            {
+                if (_configWindow != null)
+                {
+                    _configWindow.Close();
+                    _configWindow = null;
+                }
+            }
+            catch { }
         }
     }
 }

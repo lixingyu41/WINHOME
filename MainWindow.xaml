@@ -12,6 +12,47 @@
         ShowInTaskbar="False"
         Background="#2F2F2F">
     <Grid>
+        <Grid.Resources>
+            <Style x:Key="IconButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="8" />
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bd" Property="BorderBrush" Value="#CCCCCC" />
+                                    <Setter TargetName="bd" Property="BorderThickness" Value="1" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="bd" Property="Opacity" Value="0.8" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </Grid.Resources>
+
+        <!-- Bottom-left controls -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12" >
+            <Button x:Name="PinButton" Style="{StaticResource IconButtonStyle}" Click="PinButton_Click" ToolTip="Pin (keep on screen after release)">
+                <Grid>
+                    <Ellipse Fill="Transparent" x:Name="PinBg" />
+                    <TextBlock FontSize="18" Foreground="#FFFFFF" VerticalAlignment="Center" HorizontalAlignment="Center">📌</TextBlock>
+                </Grid>
+            </Button>
+            <Button x:Name="ConfigButton" Style="{StaticResource IconButtonStyle}" Click="ConfigButton_Click" ToolTip="Open settings">
+                <TextBlock FontSize="18" Foreground="#FFFFFF">⚙</TextBlock>
+            </Button>
+        </StackPanel>
 
     </Grid>
 </Window>

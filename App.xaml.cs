@@ -47,9 +47,11 @@ namespace WINHOME
                 if (_mainWindow == null) return;
                 if (!_mainWindow.IsVisible)
                 {
+                    // ensure config window (if any) is closed and always show main window
+                    try { _mainWindow.CloseConfigWindow(); } catch { }
                     _mainWindow.Show();
                     _mainWindow.Activate();
-                    // hide when window loses focus
+                    // always hide when window loses focus (deactivation) — deactivation should close the window
                     _mainWindow.Deactivated += MainWindow_Deactivated;
                 }
             });
@@ -63,8 +65,12 @@ namespace WINHOME
                 if (_mainWindow == null) return;
                 if (_mainWindow.IsVisible)
                 {
-                    _mainWindow.Deactivated -= MainWindow_Deactivated;
-                    _mainWindow.Hide();
+                    // if pinned do not hide on release
+                    if (!_mainWindow.IsPinned)
+                    {
+                        _mainWindow.Deactivated -= MainWindow_Deactivated;
+                        _mainWindow.Hide();
+                    }
                 }
             });
         }
