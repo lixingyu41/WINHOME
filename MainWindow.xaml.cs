@@ -1,13 +1,5 @@
-﻿using System.Text;
+﻿using System.ComponentModel;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace WINHOME
 {
@@ -19,6 +11,13 @@ namespace WINHOME
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        // 点击 X 或 Alt+F4 会触发 Closing，拦截为隐藏而非退出
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            e.Cancel = true;
+            this.Hide();
         }
     }
 }
