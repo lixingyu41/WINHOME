@@ -26,6 +26,9 @@ namespace WINHOME
                 _mainWindow = new MainWindow();
                 _mainWindow.Hide();
 
+                // start background preload of start menu items to avoid lag when opening config
+                System.Threading.Tasks.Task.Run(() => StartMenuScanner.PreloadAsync());
+
                 _hotkeyService = new HotkeyService();
                 _hotkeyService.ComboPressed += HotkeyService_ComboPressed;
                 _hotkeyService.ComboReleased += HotkeyService_ComboReleased;

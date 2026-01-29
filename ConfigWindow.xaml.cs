@@ -6,12 +6,12 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Diagnostics;
 using System.Windows.Threading;
+using System.Threading.Tasks;
 
 namespace WINHOME
 {
     public partial class ConfigWindow : Window
     {
-        private readonly List<string> _letters = Enumerable.Range('A', 26).Select(i => ((char)i).ToString()).ToList();
         private DispatcherTimer? _bubbleTimer;
 
         public ConfigWindow()
@@ -24,47 +24,47 @@ namespace WINHOME
 
         private void ConfigWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // load programs from Start Menu
-            var apps = StartMenuScanner.LoadStartMenuApps();
-            ProgramsListBox.ItemsSource = apps;
+            // cancel any scheduled cache clear because user opened config
+            StartMenuScanner.CancelScheduledClear();
 
-            // build alphabet column
-            BuildAlphabetColumn();
+            // load programs: try cached first, then background load
+            var cached = StartMenuScanner.GetCachedApps();
+            if (cached != null && cached.Count > 0)
+            {
+                BuildGroupsViewFromItems(cached);
+            }
+            else
+            {
+                GroupsControl.ItemsSource = new List<object>();
+            }
+
+            // background load to refresh and fill
+            Task.Run(() =>
+            {
+                var apps = StartMenuScanner.LoadStartMenuApps();
+                // update cache
+                StartMenuScanner.PreloadAsync();
+                Dispatcher.Invoke(() =>
+                {
+                    BuildGroupsViewFromItems(apps);
+                });
+            });
+
+            // no alphabet column (removed)
 
             // attach scroll viewer events to show bubble while scrolling
             AttachScrollViewerEvents();
-
-            // ensure wrappanel wraps to ListBox width so vertical scrolling occurs
-            SetupWrapPanel();
         }
 
-        private void SetupWrapPanel()
-        {
-            try
-            {
-                var wp = VisualTreeHelpers.FindVisualChild<WrapPanel>(ProgramsListBox);
-                if (wp != null)
-                {
-                    wp.ItemWidth = 96;
-                    wp.ItemHeight = 120;
-                    wp.Width = ProgramsListBox.ActualWidth;
-                    ProgramsListBox.SizeChanged += (s, e) =>
-                    {
-                        try { wp.Width = ProgramsListBox.ActualWidth; } catch { }
-                    };
-                }
-            }
-            catch { }
-        }
+        // removed SetupWrapPanel: WrapPanel sizing handled by ItemsControl layout
 
         private void AttachScrollViewerEvents()
         {
             _bubbleTimer?.Stop();
             _bubbleTimer = null;
-            var sv = VisualTreeHelpers.FindVisualChild<ScrollViewer>(ProgramsListBox);
-            if (sv != null)
+            if (GroupsScrollViewer != null)
             {
-                sv.ScrollChanged += Sv_ScrollChanged;
+                GroupsScrollViewer.ScrollChanged += Sv_ScrollChanged;
             }
         }
 
@@ -73,21 +73,29 @@ namespace WINHOME
             // determine first visible item and show its starting letter
             try
             {
-                var items = ProgramsListBox.ItemsSource as IEnumerable<AppInfo>;
-                if (items == null) return;
-                for (int i = 0; i < ProgramsListBox.Items.Count; i++)
+                //var items = ProgramsListBox.ItemsSource as IEnumerable<AppInfo>;
+                //if (items == null) return;
+                // find first visible group item by scanning groups control children
+                for (int gi = 0; gi < GroupsControl.Items.Count; gi++)
                 {
-                    var container = ProgramsListBox.ItemContainerGenerator.ContainerFromIndex(i) as FrameworkElement;
-                    if (container == null) continue;
-                    // get position relative to listbox
-                    var pos = container.TransformToAncestor(ProgramsListBox).Transform(new Point(0, 0));
-                    if (pos.Y + container.ActualHeight >= 0)
+                    var groupContainer = GroupsControl.ItemContainerGenerator.ContainerFromIndex(gi) as FrameworkElement;
+                    if (groupContainer == null) continue;
+                    // compute position relative to the scroll viewer viewport
+                    var posGroup = groupContainer.TransformToAncestor(GroupsScrollViewer).Transform(new Point(0, 0));
+                    // if group's bottom is below top of viewport, it's the first visible
+                    if (posGroup.Y + groupContainer.ActualHeight > 0)
                     {
-                        var app = ProgramsListBox.Items[i] as AppInfo;
-                        if (app != null && !string.IsNullOrEmpty(app.Name))
+                        var group = GroupsControl.Items[gi];
+                        var itemsProp = group.GetType().GetProperty("Items");
+                        var items = itemsProp?.GetValue(group) as System.Collections.IList;
+                        if (items != null && items.Count > 0)
                         {
-                            string letter = app.Name.Substring(0, 1).ToUpper();
-                            ShowBubble(letter);
+                            var first = items[0] as AppInfo;
+                            if (first != null)
+                            {
+                                string letter = first.Name.Substring(0, 1).ToUpper();
+                                ShowBubble(letter);
+                            }
                         }
                         break;
                     }
@@ -102,15 +110,21 @@ namespace WINHOME
             return new List<AppInfo>();
         }
 
-        private void BuildAlphabetColumn()
+        // Alphabet panel removed; no-op
+
+        // legacy BuildGroupsView removed; use BuildGroupsViewFromItems instead
+
+        private void BuildGroupsViewFromItems(IEnumerable<AppInfo> items)
         {
-            AlphabetPanel.Children.Clear();
-            foreach (var l in _letters)
+            try
             {
-                var tb = new TextBlock { Text = l, Foreground = System.Windows.Media.Brushes.White, Margin = new Thickness(2), FontSize = 12 };
-                tb.MouseDown += Letter_MouseDown;
-                AlphabetPanel.Children.Add(tb);
+                var groups = items.GroupBy(a => (a.Name ?? "").Substring(0, 1).ToUpper(), StringComparer.OrdinalIgnoreCase)
+                                  .OrderBy(g => g.Key)
+                                  .Select(g => new { Key = g.Key, Items = g.ToList() })
+                                  .ToList();
+                GroupsControl.ItemsSource = groups;
             }
+            catch { }
         }
 
         private void Letter_MouseDown(object? sender, MouseButtonEventArgs e)
@@ -124,15 +138,27 @@ namespace WINHOME
 
         private void ScrollToLetter(string letter)
         {
-            // find index of first item starting with letter
-            var items = ProgramsListBox.ItemsSource as IEnumerable<AppInfo>;
-            if (items == null) return;
-            var idx = items.Select((v, i) => new { v, i }).FirstOrDefault(x => x.v.Name.StartsWith(letter, StringComparison.OrdinalIgnoreCase))?.i ?? -1;
-            if (idx >= 0)
+            try
             {
-                ProgramsListBox.ScrollIntoView(ProgramsListBox.Items[idx]);
-                ShowBubble(letter);
+                for (int gi = 0; gi < GroupsControl.Items.Count; gi++)
+                {
+                    var group = GroupsControl.Items[gi];
+                    var keyProp = group.GetType().GetProperty("Key");
+                    var key = (keyProp?.GetValue(group) as string) ?? "";
+                    if (string.Equals(key, letter, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var container = GroupsControl.ItemContainerGenerator.ContainerFromIndex(gi) as FrameworkElement;
+                        if (container != null)
+                        {
+                            var pos = container.TransformToAncestor(GroupsScrollViewer).Transform(new Point(0, 0));
+                            GroupsScrollViewer.ScrollToVerticalOffset(pos.Y + GroupsScrollViewer.VerticalOffset);
+                        }
+                        ShowBubble(letter);
+                        break;
+                    }
+                }
             }
+            catch { }
         }
 
         private void ShowBubble(string letter)
@@ -140,7 +166,7 @@ namespace WINHOME
             BubbleText.Text = letter;
             Bubble.Visibility = Visibility.Visible;
             _bubbleTimer?.Stop();
-            _bubbleTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Normal, (s, e) =>
+            _bubbleTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Normal, (s, e) => 
             {
                 Bubble.Visibility = Visibility.Collapsed;
                 _bubbleTimer?.Stop();
@@ -151,6 +177,13 @@ namespace WINHOME
         private void ConfigWindow_Deactivated(object? sender, EventArgs e)
         {
             try { this.Close(); } catch { }
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            base.OnClosed(e);
+            // schedule memory cleanup after 5s if not reopened
+            StartMenuScanner.ScheduleClearCache(TimeSpan.FromSeconds(5));
         }
 
         private void AppTile_MouseLeftButtonUp(object? sender, MouseButtonEventArgs e)
