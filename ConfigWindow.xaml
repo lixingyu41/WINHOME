@@ -49,7 +49,24 @@
             </LinearGradientBrush>
         </Grid.Background>
 
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Size settings -->
+        <DockPanel Grid.Row="0" Margin="12,10" LastChildFill="False">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="宽度%" Foreground="#EAEAEA" VerticalAlignment="Center"/>
+                <TextBox x:Name="WidthPercentBox" Width="60" Margin="6,0" VerticalAlignment="Center" />
+                <TextBlock Text="高度%" Foreground="#EAEAEA" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                <TextBox x:Name="HeightPercentBox" Width="60" Margin="6,0" VerticalAlignment="Center" />
+                <Button Content="应用" Width="72" Margin="12,0,0,0" Click="ApplySizeButton_Click"/>
+            </StackPanel>
+        </DockPanel>
+
         <ScrollViewer
+            Grid.Row="1"
             x:Name="GroupsScrollViewer"
             VerticalScrollBarVisibility="Auto"
             HorizontalScrollBarVisibility="Disabled"

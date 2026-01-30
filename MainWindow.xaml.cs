@@ -21,6 +21,8 @@ namespace WINHOME
         private AppInfo? _draggingApp;
         private Point _groupDragStartPoint;
         private TileGroupView? _draggingGroup;
+        private AppInfo? _selectedApp;
+        private TileGroupView? _selectedGroup;
         private bool _ignoreConfigChanged;
 
         public ObservableCollection<TileGroupView> TileGroups { get; } = new();
@@ -62,8 +64,9 @@ namespace WINHOME
             double screenH = work.Height;
 
             // 默认尺寸：宽 = 屏幕60%，高 = 屏幕50%
-            double targetW = Math.Round(screenW * 0.6);
-            double targetH = Math.Round(screenH * 0.5);
+            var ratios = PinConfigManager.GetWindowRatios();
+            double targetW = Math.Round(screenW * ratios.widthRatio);
+            double targetH = Math.Round(screenH * ratios.heightRatio);
 
             // 最大不超过屏幕90%
             double maxW = Math.Round(screenW * 0.9);
@@ -97,6 +100,7 @@ namespace WINHOME
             // 每次显示时同步最新配置
             if (IsVisible)
             {
+                ApplyLatestSizeFromConfig();
                 RefreshPinnedTiles();
             }
             else
@@ -187,6 +191,32 @@ namespace WINHOME
 
         #region Tile loading & persistence
 
+        public void ApplyLatestSizeFromConfig()
+        {
+            var ratios = PinConfigManager.GetWindowRatios();
+            ApplyRatios(ratios.widthRatio, ratios.heightRatio);
+        }
+
+        public void ApplyRatios(double widthRatio, double heightRatio)
+        {
+            var work = SystemParameters.WorkArea;
+            double targetW = Math.Round(work.Width * widthRatio);
+            double targetH = Math.Round(work.Height * heightRatio);
+
+            // clamp to 90%
+            double maxW = Math.Round(work.Width * 0.95);
+            double maxH = Math.Round(work.Height * 0.95);
+            if (targetW > maxW) targetW = maxW;
+            if (targetH > maxH) targetH = maxH;
+            if (targetW < work.Width * 0.3) targetW = Math.Round(work.Width * 0.3);
+            if (targetH < work.Height * 0.3) targetH = Math.Round(work.Height * 0.3);
+
+            Width = targetW;
+            Height = targetH;
+            Left = work.Left + (work.Width - Width) / 2.0;
+            Top = work.Top + (work.Height - Height) / 2.0;
+        }
+
         private void RefreshPinnedTiles()
         {
             try
@@ -258,6 +288,18 @@ namespace WINHOME
 
         #region Tile interactions
 
+        private void RootContextMenu_Opening(object sender, RoutedEventArgs e)
+        {
+            if (CtxDeleteGroup != null)
+            {
+                CtxDeleteGroup.IsEnabled = _selectedGroup != null && !string.Equals(_selectedGroup.Name, "常用", StringComparison.OrdinalIgnoreCase);
+            }
+            if (CtxUnpinApp != null)
+            {
+                CtxUnpinApp.IsEnabled = _selectedApp != null;
+            }
+        }
+
         private void AddGroup_Click(object sender, RoutedEventArgs e)
         {
             string baseName = "新分类";
@@ -270,15 +312,28 @@ namespace WINHOME
 
             var grp = new TileGroupView { Name = name, Order = TileGroups.Count };
             TileGroups.Add(grp);
+            _selectedGroup = grp;
             PersistTiles();
+        }
+
+        private void DeleteSelectedGroup_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedGroup == null) return;
+            DeleteGroup(_selectedGroup);
         }
 
         private void Group_Delete_Click(object sender, RoutedEventArgs e)
         {
             var group = (sender as FrameworkElement)?.DataContext as TileGroupView;
-            if (group == null || string.Equals(group.Name, "常用", StringComparison.OrdinalIgnoreCase)) return;
+            if (group == null) return;
+            _selectedGroup = group;
+            DeleteGroup(group);
+        }
 
-            // move apps to default group to avoid loss
+        private void DeleteGroup(TileGroupView group)
+        {
+            if (string.Equals(group.Name, "常用", StringComparison.OrdinalIgnoreCase)) return;
+
             var defaultGroup = TileGroups.FirstOrDefault(g => string.Equals(g.Name, "常用", StringComparison.OrdinalIgnoreCase));
             if (defaultGroup == null)
             {
@@ -292,6 +347,7 @@ namespace WINHOME
             }
 
             TileGroups.Remove(group);
+            _selectedGroup = null;
             NormalizeGroupOrder();
             PersistTiles();
         }
@@ -301,10 +357,19 @@ namespace WINHOME
             // allow context menu to open anywhere in list
         }
 
+        private void UnpinSelectedApp_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedApp == null) return;
+            RemoveTile(_selectedApp);
+            _selectedApp = null;
+        }
+
         private void Tile_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if ((sender as FrameworkElement)?.DataContext is AppInfo app)
             {
+                _selectedApp = app;
+                _selectedGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(app));
                 LaunchApp(app);
             }
         }
@@ -313,6 +378,8 @@ namespace WINHOME
         {
             if ((sender as FrameworkElement)?.DataContext is AppInfo app)
             {
+                _selectedApp = app;
+                _selectedGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(app));
                 LaunchApp(app);
             }
         }
@@ -321,6 +388,8 @@ namespace WINHOME
         {
             if ((sender as FrameworkElement)?.DataContext is AppInfo app)
             {
+                _selectedApp = app;
+                _selectedGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(app));
                 RemoveTile(app);
             }
         }
@@ -329,7 +398,18 @@ namespace WINHOME
         {
             if ((sender as FrameworkElement)?.DataContext is AppInfo app)
             {
+                _selectedApp = app;
+                _selectedGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(app));
                 OpenAppFolder(app);
+            }
+        }
+
+        private void Tile_RightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _selectedApp = (sender as FrameworkElement)?.DataContext as AppInfo;
+            if (_selectedApp != null)
+            {
+                _selectedGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(_selectedApp));
             }
         }
 
@@ -360,6 +440,7 @@ namespace WINHOME
         {
             _groupDragStartPoint = e.GetPosition(null);
             _draggingGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
+            _selectedGroup = _draggingGroup;
         }
 
         private void Group_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -376,6 +457,11 @@ namespace WINHOME
                 }
                 catch { }
             }
+        }
+
+        private void Group_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _selectedGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
         }
 
         private void Tile_Drop(object sender, DragEventArgs e)
@@ -483,11 +569,13 @@ namespace WINHOME
             if (group == null) return;
 
             group.Items.Remove(app);
+            if (_selectedApp == app) _selectedApp = null;
             if (group.Items.Count == 0 &&
                 !string.Equals(group.Name, "常用", StringComparison.OrdinalIgnoreCase) &&
                 TileGroups.Count > 1)
             {
                 TileGroups.Remove(group);
+                if (_selectedGroup == group) _selectedGroup = null;
             }
 
             PersistTiles();

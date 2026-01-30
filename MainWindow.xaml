@@ -77,8 +77,10 @@
                               PreviewMouseRightButtonDown="Groups_RightButtonDown">
 
                     <ItemsControl.ContextMenu>
-                        <ContextMenu>
+                        <ContextMenu Opened="RootContextMenu_Opening">
                             <MenuItem Header="新建分类" Click="AddGroup_Click"/>
+                            <MenuItem Header="删除选中分类" Click="DeleteSelectedGroup_Click" x:Name="CtxDeleteGroup"/>
+                            <MenuItem Header="取消固定选中软件" Click="UnpinSelectedApp_Click" x:Name="CtxUnpinApp"/>
                         </ContextMenu>
                     </ItemsControl.ContextMenu>
                     <ItemsControl.ItemsPanel>
@@ -97,6 +99,7 @@
                                     BorderThickness="1"
                                     CornerRadius="12"
                                     PreviewMouseLeftButtonDown="Group_PreviewMouseLeftButtonDown"
+                                    PreviewMouseRightButtonDown="Group_PreviewMouseRightButtonDown"
                                     PreviewMouseMove="Group_PreviewMouseMove"
                                     AllowDrop="True"
                                     Drop="Group_Drop">
@@ -130,20 +133,21 @@
 
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Width="112"
-                                                        Height="132"
-                                                        Margin="6"
-                                                        Padding="10"
-                                                        CornerRadius="10"
-                                                        Background="#2B2E39"
-                                                        BorderBrush="#3A3E4D"
-                                                        BorderThickness="1"
-                                                        MouseLeftButtonUp="Tile_MouseLeftButtonUp"
-                                                        PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
-                                                        PreviewMouseMove="Tile_PreviewMouseMove"
-                                                        AllowDrop="True"
-                                                        Drop="Tile_Drop"
-                                                        Tag="{Binding}">
+                                            <Border Width="112"
+                                                    Height="132"
+                                                    Margin="6"
+                                                    Padding="10"
+                                                    CornerRadius="10"
+                                                    Background="#2B2E39"
+                                                    BorderBrush="#3A3E4D"
+                                                    BorderThickness="1"
+                                                    MouseLeftButtonUp="Tile_MouseLeftButtonUp"
+                                                    PreviewMouseRightButtonDown="Tile_RightButtonDown"
+                                                    PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
+                                                    PreviewMouseMove="Tile_PreviewMouseMove"
+                                                    AllowDrop="True"
+                                                    Drop="Tile_Drop"
+                                                    Tag="{Binding}">
 
                                                     <Border.ContextMenu>
                                                         <ContextMenu DataContext="{Binding}">

@@ -30,6 +30,11 @@ namespace WINHOME
             // cancel any scheduled cache clear because user opened config
             StartMenuScanner.CancelScheduledClear();
 
+            // load window size ratios
+            var ratios = PinConfigManager.GetWindowRatios();
+            WidthPercentBox.Text = Math.Round(ratios.widthRatio * 100).ToString("0");
+            HeightPercentBox.Text = Math.Round(ratios.heightRatio * 100).ToString("0");
+
             // load programs: try cached first, then background load
             var cached = StartMenuScanner.GetCachedApps();
             if (cached != null && cached.Count > 0)
@@ -322,6 +327,38 @@ namespace WINHOME
                 }
             }
             catch { }
+        }
+
+        private void ApplySizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                double wp = ParsePercent(WidthPercentBox.Text, 60);
+                double hp = ParsePercent(HeightPercentBox.Text, 50);
+                PinConfigManager.UpdateWindowRatios(wp / 100.0, hp / 100.0);
+
+                if (Owner is MainWindow mw)
+                {
+                    mw.ApplyRatios(wp / 100.0, hp / 100.0);
+                    // keep config same size as main
+                    this.Width = mw.Width;
+                    this.Height = mw.Height;
+                    this.Left = mw.Left;
+                    this.Top = mw.Top;
+                }
+            }
+            catch { }
+        }
+
+        private double ParsePercent(string? text, double fallback)
+        {
+            if (double.TryParse(text, out var val))
+            {
+                if (val < 30) val = 30;
+                if (val > 90) val = 90;
+                return val;
+            }
+            return fallback;
         }
 
         private static T? FindAncestor<T>(DependencyObject? child) where T : DependencyObject

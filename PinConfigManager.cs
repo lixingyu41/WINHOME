@@ -222,6 +222,10 @@ namespace WINHOME
             {
                 g.Order = order++;
             }
+
+            // clamp ratios
+            cfg.MainWidthRatio = ClampRatio(cfg.MainWidthRatio, 0.3, 0.9, 0.6);
+            cfg.MainHeightRatio = ClampRatio(cfg.MainHeightRatio, 0.3, 0.9, 0.5);
         }
 
         private static PinnedConfig CreateDefault()
@@ -231,7 +235,9 @@ namespace WINHOME
                 Groups = new List<PinnedGroup>
                 {
                     new PinnedGroup { Name = "常用" }
-                }
+                },
+                MainWidthRatio = 0.6,
+                MainHeightRatio = 0.5
             };
         }
 
@@ -239,11 +245,39 @@ namespace WINHOME
         {
             try { ConfigChanged?.Invoke(null, EventArgs.Empty); } catch { }
         }
+
+        public static (double widthRatio, double heightRatio) GetWindowRatios()
+        {
+            var cfg = Load();
+            return (cfg.MainWidthRatio, cfg.MainHeightRatio);
+        }
+
+        public static void UpdateWindowRatios(double widthRatio, double heightRatio)
+        {
+            lock (_sync)
+            {
+                var cfg = LoadUnlocked();
+                cfg.MainWidthRatio = ClampRatio(widthRatio, 0.3, 0.9, cfg.MainWidthRatio);
+                cfg.MainHeightRatio = ClampRatio(heightRatio, 0.3, 0.9, cfg.MainHeightRatio);
+                EnsureDefault(cfg);
+                SaveInternal(cfg, raiseEvent: true);
+            }
+        }
+
+        private static double ClampRatio(double value, double min, double max, double fallback)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return fallback;
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
     }
 
     internal class PinnedConfig
     {
         public List<PinnedGroup> Groups { get; set; } = new();
+        public double MainWidthRatio { get; set; } = 0.6;
+        public double MainHeightRatio { get; set; } = 0.5;
     }
 
     internal class PinnedGroup
