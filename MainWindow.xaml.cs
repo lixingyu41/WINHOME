@@ -288,7 +288,7 @@ namespace WINHOME
 
         #region Tile interactions
 
-        private void RootContextMenu_Opening(object sender, RoutedEventArgs e)
+        private void RootContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (CtxDeleteGroup != null)
             {
@@ -352,9 +352,16 @@ namespace WINHOME
             PersistTiles();
         }
 
-        private void Groups_RightButtonDown(object sender, MouseButtonEventArgs e)
+        private void Root_RightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            // allow context menu to open anywhere in list
+            _selectedApp = null;
+            _selectedGroup = null;
+            if (RootContextMenu != null)
+            {
+                RootContextMenu.PlacementTarget = sender as UIElement;
+                RootContextMenu.IsOpen = true;
+                e.Handled = true;
+            }
         }
 
         private void UnpinSelectedApp_Click(object sender, RoutedEventArgs e)
