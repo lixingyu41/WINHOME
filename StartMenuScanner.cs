@@ -158,7 +158,11 @@ namespace WINHOME
         {
             try
             {
-                // request large icon for better resolution when available
+                // try jumbo 256px first
+                var jumbo = GetJumboIcon(path);
+                if (jumbo != null) return jumbo;
+
+                // fallback: large shell icon
                 var shinfo = new SHFILEINFO();
                 IntPtr res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES);
                 if (shinfo.hIcon != IntPtr.Zero)
@@ -173,6 +177,35 @@ namespace WINHOME
                     {
                         DestroyIcon(shinfo.hIcon);
                     }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static ImageSource? GetJumboIcon(string path)
+        {
+            try
+            {
+                var shinfo = new SHFILEINFO();
+                var hSuccess = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES);
+                if (hSuccess == IntPtr.Zero) return null;
+
+                Guid iidImageList = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"); // IImageList
+                if (SHGetImageList(SHIL_JUMBO, ref iidImageList, out var imageList) != 0) return null;
+
+                imageList.GetIcon(shinfo.iIcon, (int)ImageListDrawItemConstants.ILD_TRANSPARENT, out var hIcon);
+                if (hIcon == IntPtr.Zero) return null;
+
+                try
+                {
+                    var bmp = Imaging.CreateBitmapSourceFromHIcon(hIcon, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(256, 256));
+                    bmp.Freeze();
+                    return bmp;
+                }
+                finally
+                {
+                    DestroyIcon(hIcon);
                 }
             }
             catch { }
@@ -230,6 +263,9 @@ namespace WINHOME
         private const uint SHGFI_SMALLICON = 0x000000001;
         private const uint SHGFI_LARGEICON = 0x000000000;
         private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
+        private const uint SHGFI_SYSICONINDEX = 0x000004000;
+
+        private const int SHIL_JUMBO = 0x4;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         private struct SHFILEINFO
@@ -248,5 +284,57 @@ namespace WINHOME
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool DestroyIcon(IntPtr hIcon);
+
+        [DllImport("shell32.dll", EntryPoint = "#727")]
+        private static extern int SHGetImageList(int iImageList, ref Guid riid, out IImageList ppv);
+
+        [ComImport, Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IImageList
+        {
+            [PreserveSig]
+            int Add(IntPtr hbmImage, IntPtr hbmMask, ref int pi);
+            [PreserveSig]
+            int ReplaceIcon(int i, IntPtr hicon, ref int pi);
+            [PreserveSig]
+            int SetOverlayImage(int iImage, int iOverlay);
+            [PreserveSig]
+            int Replace(int i, IntPtr hbmImage, IntPtr hbmMask);
+            [PreserveSig]
+            int AddMasked(IntPtr hbmImage, int crMask, ref int pi);
+            [PreserveSig]
+            int Draw(ref IMAGELISTDRAWPARAMS pimldp);
+            [PreserveSig]
+            int Remove(int i);
+            [PreserveSig]
+            int GetIcon(int i, int flags, out IntPtr picon);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IMAGELISTDRAWPARAMS
+        {
+            public int cbSize;
+            public IntPtr himl;
+            public int i;
+            public IntPtr hdcDst;
+            public int x;
+            public int y;
+            public int cx;
+            public int cy;
+            public int xBitmap;    // x offest from the upperleft of bitmap
+            public int yBitmap;    // y offset from the upperleft of bitmap
+            public int rgbBk;
+            public int rgbFg;
+            public int fStyle;
+            public int dwRop;
+            public int fState;
+            public int Frame;
+            public int crEffect;
+        }
+
+        [Flags]
+        private enum ImageListDrawItemConstants
+        {
+            ILD_TRANSPARENT = 0x00000001,
+        }
     }
 }

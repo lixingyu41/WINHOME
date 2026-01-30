@@ -19,6 +19,8 @@ namespace WINHOME
         private ConfigWindow? _configWindow;
         private Point _dragStartPoint;
         private AppInfo? _draggingApp;
+        private Point _groupDragStartPoint;
+        private TileGroupView? _draggingGroup;
         private bool _ignoreConfigChanged;
 
         public ObservableCollection<TileGroupView> TileGroups { get; } = new();
@@ -101,6 +103,7 @@ namespace WINHOME
             {
                 // When window is hidden, reset pin state so next open is not pinned
                 IsPinned = false;
+                StartMenuScanner.ScheduleClearCache(TimeSpan.FromSeconds(20));
             }
         }
 
@@ -193,9 +196,13 @@ namespace WINHOME
                 _ignoreConfigChanged = true;
                 TileGroups.Clear();
 
-                foreach (var g in cfg.Groups)
+                foreach (var g in cfg.Groups.OrderBy(g => g.Order))
                 {
-                    var group = new TileGroupView { Name = string.IsNullOrWhiteSpace(g.Name) ? "常用" : g.Name };
+                    var group = new TileGroupView
+                    {
+                        Name = string.IsNullOrWhiteSpace(g.Name) ? "常用" : g.Name,
+                        Order = g.Order
+                    };
                     foreach (var app in g.Apps)
                     {
                         var info = new AppInfo
@@ -223,11 +230,21 @@ namespace WINHOME
             try
             {
                 _ignoreConfigChanged = true;
+                NormalizeGroupOrder();
                 PinConfigManager.ReplaceWith(TileGroups);
             }
             finally
             {
                 _ignoreConfigChanged = false;
+            }
+        }
+
+        private void NormalizeGroupOrder()
+        {
+            int order = 0;
+            foreach (var g in TileGroups.OrderBy(g => g.Order))
+            {
+                g.Order = order++;
             }
         }
 
@@ -240,6 +257,49 @@ namespace WINHOME
         #endregion
 
         #region Tile interactions
+
+        private void AddGroup_Click(object sender, RoutedEventArgs e)
+        {
+            string baseName = "新分类";
+            int n = 1;
+            string name = baseName;
+            while (TileGroups.Any(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                name = $"{baseName} {n++}";
+            }
+
+            var grp = new TileGroupView { Name = name, Order = TileGroups.Count };
+            TileGroups.Add(grp);
+            PersistTiles();
+        }
+
+        private void Group_Delete_Click(object sender, RoutedEventArgs e)
+        {
+            var group = (sender as FrameworkElement)?.DataContext as TileGroupView;
+            if (group == null || string.Equals(group.Name, "常用", StringComparison.OrdinalIgnoreCase)) return;
+
+            // move apps to default group to avoid loss
+            var defaultGroup = TileGroups.FirstOrDefault(g => string.Equals(g.Name, "常用", StringComparison.OrdinalIgnoreCase));
+            if (defaultGroup == null)
+            {
+                defaultGroup = new TileGroupView { Name = "常用", Order = 0 };
+                TileGroups.Insert(0, defaultGroup);
+            }
+            foreach (var app in group.Items.ToList())
+            {
+                app.Group = defaultGroup.Name;
+                defaultGroup.Items.Add(app);
+            }
+
+            TileGroups.Remove(group);
+            NormalizeGroupOrder();
+            PersistTiles();
+        }
+
+        private void Groups_RightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // allow context menu to open anywhere in list
+        }
 
         private void Tile_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
@@ -296,6 +356,28 @@ namespace WINHOME
             }
         }
 
+        private void Group_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _groupDragStartPoint = e.GetPosition(null);
+            _draggingGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
+        }
+
+        private void Group_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _draggingGroup == null) return;
+            var pos = e.GetPosition(null);
+            if (Math.Abs(pos.X - _groupDragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                Math.Abs(pos.Y - _groupDragStartPoint.Y) > SystemParameters.MinimumVerticalDragDistance)
+            {
+                try
+                {
+                    DragDrop.DoDragDrop((DependencyObject)sender, _draggingGroup, DragDropEffects.Move);
+                    _draggingGroup = null;
+                }
+                catch { }
+            }
+        }
+
         private void Tile_Drop(object sender, DragEventArgs e)
         {
             if (!e.Data.GetDataPresent(typeof(AppInfo))) return;
@@ -308,7 +390,7 @@ namespace WINHOME
 
         private void Group_DragOver(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(typeof(AppInfo)))
+            if (e.Data.GetDataPresent(typeof(AppInfo)) || e.Data.GetDataPresent(typeof(TileGroupView)))
             {
                 e.Effects = DragDropEffects.Move;
             }
@@ -316,12 +398,25 @@ namespace WINHOME
 
         private void Group_Drop(object sender, DragEventArgs e)
         {
-            if (!e.Data.GetDataPresent(typeof(AppInfo))) return;
-            var dragged = e.Data.GetData(typeof(AppInfo)) as AppInfo;
-            if (dragged == null) return;
+            if (e.Data.GetDataPresent(typeof(TileGroupView)))
+            {
+                var draggedGroup = e.Data.GetData(typeof(TileGroupView)) as TileGroupView;
+                var targetGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
+                if (draggedGroup != null)
+                {
+                    MoveGroup(draggedGroup, targetGroup);
+                }
+                return;
+            }
 
-            string groupName = (sender as FrameworkElement)?.Tag as string ?? dragged.Group ?? "常用";
-            MoveTile(dragged, groupName, targetBefore: null);
+            if (e.Data.GetDataPresent(typeof(AppInfo)))
+            {
+                var dragged = e.Data.GetData(typeof(AppInfo)) as AppInfo;
+                if (dragged == null) return;
+
+                string groupName = (sender as FrameworkElement)?.Tag as string ?? dragged.Group ?? "常用";
+                MoveTile(dragged, groupName, targetBefore: null);
+            }
         }
 
         private void MoveTile(AppInfo dragged, string targetGroupName, AppInfo? targetBefore)
@@ -365,6 +460,20 @@ namespace WINHOME
                 TileGroups.Remove(sourceGroup);
             }
 
+            PersistTiles();
+        }
+
+        private void MoveGroup(TileGroupView dragged, TileGroupView? target)
+        {
+            if (dragged == null || dragged == target) return;
+            int oldIndex = TileGroups.IndexOf(dragged);
+            if (oldIndex < 0) return;
+
+            int newIndex = target == null ? TileGroups.Count - 1 : TileGroups.IndexOf(target);
+            if (newIndex < 0) newIndex = TileGroups.Count - 1;
+
+            TileGroups.Move(oldIndex, newIndex);
+            NormalizeGroupOrder();
             PersistTiles();
         }
 

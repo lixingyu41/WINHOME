@@ -61,12 +61,7 @@ namespace WINHOME
             lock (_sync)
             {
                 var cfg = LoadUnlocked();
-                var group = cfg.Groups.FirstOrDefault(g => string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
-                if (group == null)
-                {
-                    group = new PinnedGroup { Name = groupName };
-                    cfg.Groups.Add(group);
-                }
+                var group = GetOrCreateGroup(cfg, groupName);
 
                 if (group.Apps.Any(a => string.Equals(a.Path, app.Path, StringComparison.OrdinalIgnoreCase)))
                 {
@@ -114,14 +109,51 @@ namespace WINHOME
             }
         }
 
+        public static PinnedGroup AddGroup(string groupName)
+        {
+            lock (_sync)
+            {
+                var cfg = LoadUnlocked();
+                var grp = cfg.Groups.FirstOrDefault(g => string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
+                if (grp != null) return grp;
+
+                grp = new PinnedGroup { Name = groupName, Order = cfg.Groups.Count };
+                cfg.Groups.Add(grp);
+                SaveInternal(cfg, raiseEvent: true);
+                return grp;
+            }
+        }
+
+        public static bool RemoveGroup(string groupName, bool moveAppsToDefault = true)
+        {
+            lock (_sync)
+            {
+                var cfg = LoadUnlocked();
+                var group = cfg.Groups.FirstOrDefault(g => string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
+                if (group == null) return false;
+                if (string.Equals(group.Name, "常用", StringComparison.OrdinalIgnoreCase)) return false;
+
+                if (moveAppsToDefault && group.Apps.Count > 0)
+                {
+                    var def = GetOrCreateGroup(cfg, "常用");
+                    def.Apps.AddRange(group.Apps);
+                }
+
+                cfg.Groups.Remove(group);
+                EnsureDefault(cfg);
+                SaveInternal(cfg, raiseEvent: true);
+                return true;
+            }
+        }
+
         public static void ReplaceWith(IEnumerable<TileGroupView> groups)
         {
             lock (_sync)
             {
                 var cfg = new PinnedConfig();
-                foreach (var g in groups)
+                foreach (var g in groups.OrderBy(g => g.Order))
                 {
-                    var grp = new PinnedGroup { Name = g.Name };
+                    var grp = new PinnedGroup { Name = g.Name, Order = g.Order };
                     foreach (var app in g.Items)
                     {
                         grp.Apps.Add(new PinnedApp { Name = app.Name, Path = app.Path, Group = g.Name });
@@ -149,6 +181,17 @@ namespace WINHOME
             return CreateDefault();
         }
 
+        private static PinnedGroup GetOrCreateGroup(PinnedConfig cfg, string groupName)
+        {
+            var group = cfg.Groups.FirstOrDefault(g => string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
+            if (group == null)
+            {
+                group = new PinnedGroup { Name = groupName, Order = cfg.Groups.Count };
+                cfg.Groups.Add(group);
+            }
+            return group;
+        }
+
         private static void SaveInternal(PinnedConfig config, bool raiseEvent)
         {
             try
@@ -171,6 +214,13 @@ namespace WINHOME
             if (cfg.Groups.Count == 0)
             {
                 cfg.Groups.Add(new PinnedGroup { Name = "常用" });
+            }
+
+            // ensure order values are sequential for layout
+            int order = 0;
+            foreach (var g in cfg.Groups.OrderBy(g => g.Order))
+            {
+                g.Order = order++;
             }
         }
 
@@ -199,6 +249,7 @@ namespace WINHOME
     internal class PinnedGroup
     {
         public string Name { get; set; } = "常用";
+        public int Order { get; set; }
         public List<PinnedApp> Apps { get; set; } = new();
     }
 

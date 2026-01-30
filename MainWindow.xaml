@@ -69,107 +69,169 @@
             <ScrollViewer Grid.Row="1"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
-                          Padding="16,0,16,12">
+                          Padding="16,0,16,12"
+                          Background="Transparent">
 
-                <ItemsControl x:Name="PinnedGroupsControl" ItemsSource="{Binding TileGroups}">
+                <ItemsControl x:Name="PinnedGroupsControl"
+                              ItemsSource="{Binding TileGroups}"
+                              PreviewMouseRightButtonDown="Groups_RightButtonDown">
+
+                    <ItemsControl.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="新建分类" Click="AddGroup_Click"/>
+                        </ContextMenu>
+                    </ItemsControl.ContextMenu>
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel IsItemsHost="True" ItemWidth="440" ItemHeight="Auto" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="0,0,0,18">
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" Foreground="#E9EBF5" Margin="4,0,4,8"/>
+                            <Border Width="420"
+                                    Margin="8"
+                                    Padding="10"
+                                    Background="#1F2330"
+                                    BorderBrush="#2E3342"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    PreviewMouseLeftButtonDown="Group_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="Group_PreviewMouseMove"
+                                    AllowDrop="True"
+                                    Drop="Group_Drop">
 
-                                <ItemsControl ItemsSource="{Binding Items}"
-                                              AllowDrop="True"
-                                              DragOver="Group_DragOver"
-                                              Drop="Group_Drop"
-                                              Tag="{Binding Name}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel IsItemsHost="True" ItemWidth="136" ItemHeight="152" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
+                                <Border.ContextMenu>
+                                    <ContextMenu DataContext="{Binding}">
+                                        <MenuItem Header="删除分类" Click="Group_Delete_Click" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
 
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Width="120"
-                                                    Height="140"
-                                                    Margin="6"
-                                                    Padding="10"
-                                                    CornerRadius="10"
-                                                    Background="#2B2E39"
-                                                    BorderBrush="#3A3E4D"
-                                                    BorderThickness="1"
-                                                    MouseLeftButtonUp="Tile_MouseLeftButtonUp"
-                                                    PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
-                                                    PreviewMouseMove="Tile_PreviewMouseMove"
-                                                    AllowDrop="True"
-                                                    Drop="Tile_Drop"
-                                                    Tag="{Binding}">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#E9EBF5"
+                                                   DockPanel.Dock="Left"/>
+                                        <Border Width="22" Height="4" CornerRadius="2" Background="#38435A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    </DockPanel>
 
-                                                <Border.ContextMenu>
-                                                    <ContextMenu DataContext="{Binding}">
-                                                        <MenuItem Header="打开" Click="Tile_Open_Click" />
-                                                        <Separator />
-                                                        <MenuItem Header="从主界面移除" Click="Tile_Remove_Click" />
-                                                        <MenuItem Header="打开文件位置" Click="Tile_OpenFolder_Click" />
-                                                    </ContextMenu>
-                                                </Border.ContextMenu>
+                                    <ItemsControl ItemsSource="{Binding Items}"
+                                                  AllowDrop="True"
+                                                  DragOver="Group_DragOver"
+                                                  Drop="Group_Drop"
+                                                  Tag="{Binding Name}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel IsItemsHost="True" ItemWidth="128" ItemHeight="144" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
 
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#2B2E39"/>
-                                                        <Setter Property="BorderBrush" Value="#3A3E4D"/>
-                                                        <Setter Property="Effect">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="112"
+                                                        Height="132"
+                                                        Margin="6"
+                                                        Padding="10"
+                                                        CornerRadius="10"
+                                                        Background="#2B2E39"
+                                                        BorderBrush="#3A3E4D"
+                                                        BorderThickness="1"
+                                                        MouseLeftButtonUp="Tile_MouseLeftButtonUp"
+                                                        PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
+                                                        PreviewMouseMove="Tile_PreviewMouseMove"
+                                                        AllowDrop="True"
+                                                        Drop="Tile_Drop"
+                                                        Tag="{Binding}">
+
+                                                    <Border.ContextMenu>
+                                                        <ContextMenu DataContext="{Binding}">
+                                                            <MenuItem Header="打开" Click="Tile_Open_Click" />
+                                                            <Separator />
+                                                            <MenuItem Header="从主界面移除" Click="Tile_Remove_Click" />
+                                                            <MenuItem Header="打开文件位置" Click="Tile_OpenFolder_Click" />
+                                                        </ContextMenu>
+                                                    </Border.ContextMenu>
+
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="#2B2E39"/>
+                                                            <Setter Property="BorderBrush" Value="#3A3E4D"/>
+                                                            <Setter Property="Effect">
+                                                                <Setter.Value>
+                                                                    <DropShadowEffect BlurRadius="8" Color="#66000000" ShadowDepth="2" Opacity="0.25"/>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="BorderBrush" Value="#6CA0FF"/>
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="*"/>
+                                                        </Grid.RowDefinitions>
+
+                                                        <Image Source="{Binding Icon}"
+                                                               Width="48"
+                                                               Height="48"
+                                                               Margin="0,8,0,8"
+                                                               HorizontalAlignment="Center"
+                                                               Stretch="UniformToFill"/>
+
+                                                        <TextBlock Grid.Row="1"
+                                                                   Text="{Binding Name}"
+                                                                   TextAlignment="Center"
+                                                                   FontSize="13"
+                                                                   Foreground="#F0F2FF"
+                                                                   TextWrapping="Wrap"
+                                                                   LineHeight="18"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   MaxHeight="36"
+                                                                   VerticalAlignment="Top"/>
+
+                                                        <Border Grid.Row="0"
+                                                                HorizontalAlignment="Right"
+                                                                VerticalAlignment="Top"
+                                                                Background="#35507A"
+                                                                CornerRadius="4"
+                                                                Padding="5,2"
+                                                                Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <TextBlock Text="已固定" FontSize="10" Foreground="White"/>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+
+                                        <ItemsControl.Style>
+                                            <Style TargetType="ItemsControl">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Items.Count}" Value="0">
+                                                        <Setter Property="Template">
                                                             <Setter.Value>
-                                                                <DropShadowEffect BlurRadius="10" Color="#66000000" ShadowDepth="2" Opacity="0.25"/>
+                                                                <ControlTemplate>
+                                                                    <Border BorderBrush="#3A3E4D" BorderThickness="1" CornerRadius="10" Padding="12" MinHeight="140" Background="#252836" AllowDrop="True">
+                                                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                            <TextBlock Text="拖拽应用到此处" Foreground="#6F7485" FontSize="12" HorizontalAlignment="Center"/>
+                                                                            <TextBlock Text="默认 1 x 3" Foreground="#444A5E" FontSize="11" HorizontalAlignment="Center"/>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </ControlTemplate>
                                                             </Setter.Value>
                                                         </Setter>
-                                                        <Style.Triggers>
-                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                            </Trigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-
-                                                <Grid>
-                                                    <Grid.RowDefinitions>
-                                                        <RowDefinition Height="Auto"/>
-                                                        <RowDefinition Height="*"/>
-                                                    </Grid.RowDefinitions>
-
-                                                    <Image Source="{Binding Icon}"
-                                                           Width="48"
-                                                           Height="48"
-                                                           Margin="0,8,0,8"
-                                                           HorizontalAlignment="Center"
-                                                           Stretch="UniformToFill"/>
-
-                                                    <TextBlock Grid.Row="1"
-                                                               Text="{Binding Name}"
-                                                               TextAlignment="Center"
-                                                               FontSize="13"
-                                                               Foreground="#F0F2FF"
-                                                               TextWrapping="Wrap"
-                                                               LineHeight="18"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               MaxHeight="36"
-                                                               VerticalAlignment="Top"/>
-
-                                                    <Border Grid.Row="0"
-                                                            HorizontalAlignment="Right"
-                                                            VerticalAlignment="Top"
-                                                            Background="#35507A"
-                                                            CornerRadius="4"
-                                                            Padding="5,2"
-                                                            Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="已固定" FontSize="10" Foreground="White"/>
-                                                    </Border>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ItemsControl.Style>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -195,7 +257,7 @@
                 </StackPanel>
 
                 <TextBlock DockPanel.Dock="Right"
-                           Text="Win + Alt 唤醒 · 右键应用可移除或打开"
+                           Text=""
                            Foreground="#71768A"
                            VerticalAlignment="Center"
                            FontSize="12"

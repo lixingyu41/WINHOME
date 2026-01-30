@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -27,7 +28,8 @@ namespace WINHOME
                 _mainWindow.Hide();
 
                 // start background preload of start menu items to avoid lag when opening config
-                System.Threading.Tasks.Task.Run(() => StartMenuScanner.PreloadAsync());
+                Task.Run(() => StartMenuScanner.PreloadAsync());
+                Task.Run(() => PinConfigManager.Load());
 
                 _hotkeyService = new HotkeyService();
                 _hotkeyService.ComboPressed += HotkeyService_ComboPressed;
