@@ -8,6 +8,7 @@
         Background="#2B2B2B">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
 
         <!-- ScrollBar -->
         <Style TargetType="ScrollBar">
@@ -83,8 +84,21 @@
                                             Height="112"
                                             Margin="8"
                                             Padding="8"
-                                            Background="#3A3A3A"
                                             CornerRadius="6">
+
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#3A3A3A"/>
+                                                    <Setter Property="BorderBrush" Value="#4A4A4A"/>
+                                                    <Setter Property="BorderThickness" Value="1"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                            <Setter Property="Background" Value="#35507A"/>
+                                                            <Setter Property="BorderBrush" Value="#6CA0FF"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
 
                                             <Grid
                                                 MouseLeftButtonUp="AppTile_MouseLeftButtonUp">
@@ -114,6 +128,25 @@
                                                     TextAlignment="Center"
                                                     Foreground="White"
                                                     TextTrimming="CharacterEllipsis"/>
+
+                                                <!-- pinned badge -->
+                                                <Border
+                                                    Grid.Row="0"
+                                                    Background="#214A78"
+                                                    CornerRadius="4"
+                                                    Padding="4,2"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="已添加" FontSize="10" Foreground="White"/>
+                                                </Border>
+
+                                                <Grid.ContextMenu>
+                                                    <ContextMenu DataContext="{Binding}">
+                                                        <MenuItem Header="添加到主界面" Click="AddToMain_Click" Tag="{Binding}"/>
+                                                        <MenuItem Header="从主界面移除" Click="RemoveFromMain_Click" Tag="{Binding}"/>
+                                                    </ContextMenu>
+                                                </Grid.ContextMenu>
 
                                             </Grid>
                                         </Border>

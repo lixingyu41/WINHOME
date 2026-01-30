@@ -143,6 +143,17 @@ namespace WINHOME
             return list;
         }
 
+        public static ImageSource? GetIconForPath(string path)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path)) return null;
+                return GetIconCached(path, path);
+            }
+            catch { }
+            return null;
+        }
+
         private static ImageSource? GetIconFromShell(string path)
         {
             try

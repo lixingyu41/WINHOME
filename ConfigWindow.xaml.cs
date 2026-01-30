@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Diagnostics;
 using System.Windows.Threading;
 using System.Threading.Tasks;
+using System.Windows.Data;
 
 namespace WINHOME
 {
@@ -20,6 +21,8 @@ namespace WINHOME
             Deactivated += ConfigWindow_Deactivated;
 
             Loaded += ConfigWindow_Loaded;
+            PinConfigManager.ConfigChanged += PinConfigManager_ConfigChanged;
+            Closed += (s, e) => PinConfigManager.ConfigChanged -= PinConfigManager_ConfigChanged;
         }
 
         private void ConfigWindow_Loaded(object sender, RoutedEventArgs e)
@@ -118,7 +121,10 @@ namespace WINHOME
         {
             try
             {
-                var groups = items.GroupBy(a => (a.Name ?? "").Substring(0, 1).ToUpper(), StringComparer.OrdinalIgnoreCase)
+                var list = items.ToList();
+                ApplyPinnedFlags(list);
+
+                var groups = list.GroupBy(a => (a.Name ?? "").Substring(0, 1).ToUpper(), StringComparer.OrdinalIgnoreCase)
                                   .OrderBy(g => g.Key)
                                   .Select(g => new { Key = g.Key, Items = g.ToList() })
                                   .ToList();
@@ -230,8 +236,92 @@ namespace WINHOME
             }
             catch (Exception ex)
             {
-                MessageBox.Show("无法启动应用: " + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("鏃犳硶鍚姩搴旂敤: " + ex.Message, "閿欒", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void AddToMain_Click(object sender, RoutedEventArgs e)
+        {
+            var app = GetAppFromMenu(sender);
+            if (app == null) return;
+
+            bool added = PinConfigManager.AddApp(app, "甯哥敤");
+            if (!added)
+            {
+                return;
+            }
+
+            app.IsPinned = true;
+            RefreshPinnedFlags();
+        }
+
+        private void RemoveFromMain_Click(object sender, RoutedEventArgs e)
+        {
+            var app = GetAppFromMenu(sender);
+            if (app == null) return;
+
+            if (PinConfigManager.RemoveApp(app.Path))
+            {
+                app.IsPinned = false;
+                RefreshPinnedFlags();
+            }
+        }
+
+        private AppInfo? GetAppFromMenu(object sender)
+        {
+            if (sender is FrameworkElement fe && fe.Tag is AppInfo tagApp) return tagApp;
+            if (sender is FrameworkElement fe2 && fe2.DataContext is AppInfo ctxApp) return ctxApp;
+
+            if (sender is MenuItem mi && mi.Parent is ContextMenu cm && cm.PlacementTarget is FrameworkElement pe && pe.DataContext is AppInfo app)
+            {
+                return app;
+            }
+            return null;
+        }
+
+        private void PinConfigManager_ConfigChanged(object? sender, EventArgs e)
+        {
+            try
+            {
+                Dispatcher.Invoke(RefreshPinnedFlags);
+            }
+            catch { }
+        }
+
+        private void RefreshPinnedFlags()
+        {
+            try
+            {
+                var pinned = PinConfigManager.GetPinnedPathSet();
+                if (GroupsControl.ItemsSource == null) return;
+
+                foreach (var group in GroupsControl.ItemsSource)
+                {
+                    var itemsProp = group.GetType().GetProperty("Items");
+                    var items = itemsProp?.GetValue(group) as IEnumerable<AppInfo>;
+                    if (items == null) continue;
+                foreach (var app in items)
+                {
+                    app.IsPinned = pinned.Contains(app.Path);
+                }
+            }
+
+            CollectionViewSource.GetDefaultView(GroupsControl.ItemsSource)?.Refresh();
+        }
+        catch { }
+    }
+
+        private void ApplyPinnedFlags(IEnumerable<AppInfo> items)
+        {
+            try
+            {
+                var pinned = PinConfigManager.GetPinnedPathSet();
+                foreach (var app in items)
+                {
+                    app.IsPinned = pinned.Contains(app.Path);
+                }
+            }
+            catch { }
         }
 
         private static T? FindAncestor<T>(DependencyObject? child) where T : DependencyObject
@@ -246,27 +336,4 @@ namespace WINHOME
         }
     }
 
-    internal class AppInfo
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Path { get; set; } = string.Empty;
-        public System.Windows.Media.ImageSource? Icon { get; set; }
-    }
-}
-
-// helper to find visual child
-public static class VisualTreeHelpers
-{
-    public static T? FindVisualChild<T>(DependencyObject? obj) where T : DependencyObject
-    {
-        if (obj == null) return null;
-        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(obj); i++)
-        {
-            var child = System.Windows.Media.VisualTreeHelper.GetChild(obj, i);
-            if (child is T t) return t;
-            var res = FindVisualChild<T>(child);
-            if (res != null) return res;
-        }
-        return null;
-    }
 }
