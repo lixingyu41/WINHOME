@@ -89,9 +89,6 @@ namespace WINHOME
                     if (g.Apps.Count != before) removed = true;
                 }
 
-                // drop empty groups except the primary one
-                cfg.Groups.RemoveAll(g => g.Apps.Count == 0 && !string.Equals(g.Name, "常用", StringComparison.OrdinalIgnoreCase));
-
                 if (removed)
                 {
                     SaveInternal(cfg, raiseEvent: true);
@@ -153,7 +150,7 @@ namespace WINHOME
                 var cfg = new PinnedConfig();
                 foreach (var g in groups.OrderBy(g => g.Order))
                 {
-                    var grp = new PinnedGroup { Name = g.Name, Order = g.Order };
+                    var grp = new PinnedGroup { Name = g.Name, Order = g.Order, Columns = g.Columns };
                     foreach (var app in g.Items)
                     {
                         grp.Apps.Add(new PinnedApp { Name = app.Name, Path = app.Path, Group = g.Name });
@@ -221,6 +218,7 @@ namespace WINHOME
             foreach (var g in cfg.Groups.OrderBy(g => g.Order))
             {
                 g.Order = order++;
+                if (g.Columns <= 0) g.Columns = 3;
             }
 
             // clamp ratios
@@ -234,7 +232,7 @@ namespace WINHOME
             {
                 Groups = new List<PinnedGroup>
                 {
-                    new PinnedGroup { Name = "常用" }
+                    new PinnedGroup { Name = "常用", Columns = 3 }
                 },
                 MainWidthRatio = 0.6,
                 MainHeightRatio = 0.5
@@ -284,6 +282,7 @@ namespace WINHOME
     {
         public string Name { get; set; } = "常用";
         public int Order { get; set; }
+        public int Columns { get; set; } = 3;
         public List<PinnedApp> Apps { get; set; } = new();
     }
 

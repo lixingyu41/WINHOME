@@ -68,7 +68,7 @@
 
             <ScrollViewer Grid.Row="1"
                           VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
+                          HorizontalScrollBarVisibility="Auto"
                           Padding="16,0,16,12"
                           Background="Transparent">
 
@@ -86,49 +86,67 @@
                                   ItemsSource="{Binding TileGroups}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <WrapPanel IsItemsHost="True" ItemWidth="440" ItemHeight="Auto" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
+                            <WrapPanel Orientation="Horizontal" IsItemsHost="True" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="420"
-                                    Margin="8"
-                                    Padding="10"
+                            <Border Margin="8"
+                                    Padding="8"
                                     Background="#1F2330"
                                     BorderBrush="#2E3342"
                                     BorderThickness="1"
                                     CornerRadius="12"
+                                    Width="{Binding GroupWidth, Mode=OneWay}"
+                                    AllowDrop="True"
+                                    DragOver="Group_DragOver"
+                                    Drop="Group_Drop"
+                                    Tag="{Binding Name}"
                                     PreviewMouseLeftButtonDown="Group_PreviewMouseLeftButtonDown"
                                     PreviewMouseRightButtonDown="Group_PreviewMouseRightButtonDown"
                                     PreviewMouseMove="Group_PreviewMouseMove"
-                                    AllowDrop="True"
-                                    Drop="Group_Drop">
+                                    >
 
                                 <Border.ContextMenu>
-                                    <ContextMenu DataContext="{Binding}">
+                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                        <MenuItem Header="增加一列" Click="Group_AddColumn_Click"/>
+                                        <MenuItem Header="减少一列" Click="Group_RemoveColumn_Click"/>
+                                        <Separator/>
                                         <MenuItem Header="删除分类" Click="Group_Delete_Click" />
                                     </ContextMenu>
                                 </Border.ContextMenu>
 
-                                <StackPanel>
-                                    <DockPanel Margin="0,0,0,8">
-                                        <TextBlock Text="{Binding Name}"
-                                                   FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="#E9EBF5"
-                                                   DockPanel.Dock="Left"/>
-                                        <Border Width="22" Height="4" CornerRadius="2" Background="#38435A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                    </DockPanel>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
 
-                                    <ItemsControl ItemsSource="{Binding Items}"
+                                    <StackPanel Grid.Row="0">
+                                        <DockPanel Margin="0,0,0,8">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="16"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#E9EBF5"
+                                                       DockPanel.Dock="Left"/>
+                                            <Border Width="22" Height="4" CornerRadius="2" Background="#38435A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                        </DockPanel>
+                                    </StackPanel>
+
+                                    <ItemsControl Grid.Row="1"
+                                                  ItemsSource="{Binding Items}"
                                                   AllowDrop="True"
                                                   DragOver="Group_DragOver"
                                                   Drop="Group_Drop"
-                                                  Tag="{Binding Name}">
+                                                  Tag="{Binding Name}"
+                                                  HorizontalAlignment="Center">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <WrapPanel IsItemsHost="True" ItemWidth="128" ItemHeight="144" />
+                                                <WrapPanel IsItemsHost="True"
+                                                           ItemWidth="112"
+                                                           ItemHeight="140"
+                                                           HorizontalAlignment="Center" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
 
@@ -136,7 +154,7 @@
                                             <DataTemplate>
                                             <Border Width="112"
                                                     Height="132"
-                                                    Margin="6"
+                                                    Margin="4"
                                                     Padding="10"
                                                     CornerRadius="10"
                                                     Background="#2B2E39"
@@ -150,67 +168,67 @@
                                                     Drop="Tile_Drop"
                                                     Tag="{Binding}">
 
-                                                    <Border.ContextMenu>
-                                                        <ContextMenu DataContext="{Binding}">
-                                                            <MenuItem Header="打开" Click="Tile_Open_Click" />
-                                                            <Separator />
-                                                            <MenuItem Header="从主界面移除" Click="Tile_Remove_Click" />
-                                                            <MenuItem Header="打开文件位置" Click="Tile_OpenFolder_Click" />
-                                                        </ContextMenu>
-                                                    </Border.ContextMenu>
+                                                <Border.ContextMenu>
+                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                        <MenuItem Header="打开" Click="Tile_Open_Click" />
+                                                        <Separator />
+                                                        <MenuItem Header="从主界面移除" Click="Tile_Remove_Click" />
+                                                        <MenuItem Header="打开文件位置" Click="Tile_OpenFolder_Click" />
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
 
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Background" Value="#2B2E39"/>
-                                                            <Setter Property="BorderBrush" Value="#3A3E4D"/>
-                                                            <Setter Property="Effect">
-                                                                <Setter.Value>
-                                                                    <DropShadowEffect BlurRadius="8" Color="#66000000" ShadowDepth="2" Opacity="0.25"/>
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                            <Style.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                                </Trigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#2B2E39"/>
+                                                        <Setter Property="BorderBrush" Value="#3A3E4D"/>
+                                                        <Setter Property="Effect">
+                                                            <Setter.Value>
+                                                                <DropShadowEffect BlurRadius="8" Color="#66000000" ShadowDepth="2" Opacity="0.25"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="BorderBrush" Value="#6CA0FF"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
 
-                                                    <Grid>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="*"/>
-                                                        </Grid.RowDefinitions>
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="*"/>
+                                                    </Grid.RowDefinitions>
 
-                                                        <Image Source="{Binding Icon}"
-                                                               Width="48"
-                                                               Height="48"
-                                                               Margin="0,8,0,8"
-                                                               HorizontalAlignment="Center"
-                                                               Stretch="UniformToFill"/>
+                                                    <Image Source="{Binding Icon}"
+                                                           Width="48"
+                                                           Height="48"
+                                                           Margin="0,8,0,8"
+                                                           HorizontalAlignment="Center"
+                                                           Stretch="UniformToFill"/>
 
-                                                        <TextBlock Grid.Row="1"
-                                                                   Text="{Binding Name}"
-                                                                   TextAlignment="Center"
-                                                                   FontSize="13"
-                                                                   Foreground="#F0F2FF"
-                                                                   TextWrapping="Wrap"
-                                                                   LineHeight="18"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   MaxHeight="36"
-                                                                   VerticalAlignment="Top"/>
+                                                    <TextBlock Grid.Row="1"
+                                                               Text="{Binding Name}"
+                                                               TextAlignment="Center"
+                                                               FontSize="13"
+                                                               Foreground="#F0F2FF"
+                                                               TextWrapping="Wrap"
+                                                               LineHeight="18"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               MaxHeight="36"
+                                                               VerticalAlignment="Top"/>
 
-                                                        <Border Grid.Row="0"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Background="#35507A"
-                                                                CornerRadius="4"
-                                                                Padding="5,2"
-                                                                Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <TextBlock Text="已固定" FontSize="10" Foreground="White"/>
-                                                        </Border>
-                                                    </Grid>
-                                                </Border>
+                                                    <Border Grid.Row="0"
+                                                            HorizontalAlignment="Right"
+                                                            VerticalAlignment="Top"
+                                                            Background="#35507A"
+                                                            CornerRadius="4"
+                                                            Padding="5,2"
+                                                            Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="已固定" FontSize="10" Foreground="White"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
 
@@ -235,11 +253,29 @@
                                             </Style>
                                         </ItemsControl.Style>
                                     </ItemsControl>
-                                </StackPanel>
+
+                                    <Thumb Grid.Row="1"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Bottom"
+                                           Width="16"
+                                           Height="16"
+                                           Cursor="SizeWE"
+                                           DragStarted="Group_Resize_Started"
+                                           DragDelta="Group_Resize_Delta"
+                                           DragCompleted="Group_Resize_Completed">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#2E3342" CornerRadius="3" Opacity="0.7">
+                                                    <Path Data="M0,6 L6,6 M6,0 L6,6" Stroke="#9FB3FF" StrokeThickness="1.5" Stretch="None" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                </ItemsControl>
                 </Border>
             </ScrollViewer>
         </Grid>

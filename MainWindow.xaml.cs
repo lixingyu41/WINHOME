@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -24,6 +25,10 @@ namespace WINHOME
         private AppInfo? _selectedApp;
         private TileGroupView? _selectedGroup;
         private bool _ignoreConfigChanged;
+        private Point _lastRightClickPoint;
+        private double _resizeAnchorX;
+        private TileGroupView? _resizingGroup;
+        private bool _isGroupDragBlockedByResize;
 
         public ObservableCollection<TileGroupView> TileGroups { get; } = new();
 
@@ -231,7 +236,8 @@ namespace WINHOME
                     var group = new TileGroupView
                     {
                         Name = string.IsNullOrWhiteSpace(g.Name) ? "常用" : g.Name,
-                        Order = g.Order
+                        Order = g.Order,
+                        Columns = g.Columns <= 0 ? 3 : g.Columns
                     };
                     foreach (var app in g.Apps)
                     {
@@ -290,6 +296,13 @@ namespace WINHOME
 
         private void RootContextMenu_Opened(object sender, RoutedEventArgs e)
         {
+            // always infer selection from current cursor position to avoid stale state
+            var pos = Mouse.GetPosition(this);
+            _selectedGroup = GetDataFromPoint<TileGroupView>(pos);
+            _selectedApp = GetDataFromPoint<AppInfo>(pos);
+            if (_selectedApp != null && _selectedGroup == null)
+                _selectedGroup = TileGroups.FirstOrDefault(x => x.Items.Contains(_selectedApp));
+
             if (CtxDeleteGroup != null)
             {
                 CtxDeleteGroup.IsEnabled = _selectedGroup != null && !string.Equals(_selectedGroup.Name, "常用", StringComparison.OrdinalIgnoreCase);
@@ -330,6 +343,29 @@ namespace WINHOME
             DeleteGroup(group);
         }
 
+        private void Group_AddColumn_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is TileGroupView g)
+            {
+                g.Columns = Math.Max(1, g.Columns + 1);
+                PersistTiles();
+                Logger.Log($"[ResizeMenu] group={g.Name} columns={g.Columns}");
+            }
+        }
+
+        private void Group_RemoveColumn_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is TileGroupView g)
+            {
+                if (g.Columns > 1)
+                {
+                    g.Columns -= 1;
+                    PersistTiles();
+                    Logger.Log($"[ResizeMenu] group={g.Name} columns={g.Columns}");
+                }
+            }
+        }
+
         private void DeleteGroup(TileGroupView group)
         {
             if (string.Equals(group.Name, "常用", StringComparison.OrdinalIgnoreCase)) return;
@@ -354,8 +390,7 @@ namespace WINHOME
 
         private void Root_RightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            _selectedApp = null;
-            _selectedGroup = null;
+            _lastRightClickPoint = e.GetPosition(this);
             if (RootContextMenu != null)
             {
                 RootContextMenu.PlacementTarget = sender as UIElement;
@@ -418,6 +453,7 @@ namespace WINHOME
             {
                 _selectedGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(_selectedApp));
             }
+            // allow root context menu state to update if opened after this click
         }
 
         private void Tile_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -446,12 +482,22 @@ namespace WINHOME
         private void Group_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _groupDragStartPoint = e.GetPosition(null);
+            // if starting on resize thumb, skip group-drag init
+            if (e.OriginalSource is System.Windows.Controls.Primitives.Thumb)
+            {
+                _isGroupDragBlockedByResize = true;
+                return;
+            }
+            _isGroupDragBlockedByResize = false;
+
             _draggingGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
             _selectedGroup = _draggingGroup;
+            _lastRightClickPoint = e.GetPosition(this);
         }
 
         private void Group_PreviewMouseMove(object sender, MouseEventArgs e)
         {
+            if (_resizingGroup != null || _isGroupDragBlockedByResize) return;
             if (e.LeftButton != MouseButtonState.Pressed || _draggingGroup == null) return;
             var pos = e.GetPosition(null);
             if (Math.Abs(pos.X - _groupDragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
@@ -469,6 +515,7 @@ namespace WINHOME
         private void Group_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
             _selectedGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
+            _lastRightClickPoint = e.GetPosition(this);
         }
 
         private void Tile_Drop(object sender, DragEventArgs e)
@@ -507,7 +554,17 @@ namespace WINHOME
                 var dragged = e.Data.GetData(typeof(AppInfo)) as AppInfo;
                 if (dragged == null) return;
 
-                string groupName = (sender as FrameworkElement)?.Tag as string ?? dragged.Group ?? "常用";
+                string groupName = dragged.Group ?? "常用";
+                var fe = sender as FrameworkElement;
+                if (fe != null)
+                {
+                    if (fe.Tag is string tagName && !string.IsNullOrWhiteSpace(tagName))
+                        groupName = tagName;
+                    else if (fe.DataContext is TileGroupView gtv)
+                        groupName = gtv.Name;
+                    else if (fe.DataContext is string nameCtx && !string.IsNullOrWhiteSpace(nameCtx))
+                        groupName = nameCtx;
+                }
                 MoveTile(dragged, groupName, targetBefore: null);
             }
         }
@@ -570,6 +627,49 @@ namespace WINHOME
             PersistTiles();
         }
 
+        private void Group_Resize_Started(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not TileGroupView group) return;
+            _resizingGroup = group;
+            _resizeAnchorX = Mouse.GetPosition(this).X;
+            Logger.Log($"[ResizeStart] group={group.Name} cols={group.Columns}");
+            e.Handled = true;
+        }
+
+        private void Group_Resize_Delta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+        {
+            if (_resizingGroup == null) return;
+            var currentX = Mouse.GetPosition(this).X;
+            double delta = currentX - _resizeAnchorX;
+
+            const double span = TileGroupView.IconSpacing; // 图标同角之间的水平间距
+            const double threshold = span * 0.75; // 3/4 间距触发一次
+
+            if (Math.Abs(delta) >= threshold)
+            {
+                int step = delta > 0 ? 1 : -1;
+                var group = _resizingGroup;
+                int newCols = Math.Max(1, group.Columns + step);
+                if (newCols != group.Columns)
+                {
+                    group.Columns = newCols;
+                    PersistTiles();
+                    Logger.Log($"[Resize] group={group.Name} step={step:+#;-#;0} cols={group.Columns} threshold={threshold:F1} delta={delta:F1}");
+                }
+
+                // 以当前位置作为新的参考点
+                _resizeAnchorX = currentX;
+            }
+
+            e.Handled = true;
+        }
+
+        private void Group_Resize_Completed(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            _resizingGroup = null;
+            _isGroupDragBlockedByResize = false;
+        }
+
         private void RemoveTile(AppInfo app)
         {
             var group = TileGroups.FirstOrDefault(g => g.Items.Contains(app));
@@ -629,6 +729,19 @@ namespace WINHOME
             catch { }
         }
 
+        private T? GetDataFromPoint<T>(Point point) where T : class
+        {
+            var hit = VisualTreeHelper.HitTest(this, point);
+            DependencyObject? current = hit?.VisualHit;
+            while (current != null)
+            {
+                if (current is FrameworkElement fe && fe.DataContext is T t) return t;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
         #endregion
     }
 }
+
