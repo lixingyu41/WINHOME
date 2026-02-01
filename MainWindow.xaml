@@ -63,13 +63,12 @@
 
             <StackPanel Orientation="Horizontal" Margin="18,14,18,10">
                 <TextBlock Text="WINHOME" FontSize="18" FontWeight="SemiBold" Foreground="#E6E8EF" />
-                <TextBlock Text=" ·  主界面磁贴" Margin="6,0,0,0" Foreground="#6F7485" VerticalAlignment="Center"/>
             </StackPanel>
 
             <ScrollViewer Grid.Row="1"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Auto"
-                          Padding="16,0,16,12"
+                          Padding="6,0,6,6"
                           Background="Transparent">
 
                 <Border Background="Transparent"
@@ -92,8 +91,8 @@
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Margin="8"
-                                    Padding="8"
+                            <Border Margin="6"
+                                    Padding="3"
                                     Background="#1F2330"
                                     BorderBrush="#2E3342"
                                     BorderThickness="1"
@@ -110,9 +109,6 @@
 
                                 <Border.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Header="增加一列" Click="Group_AddColumn_Click"/>
-                                        <MenuItem Header="减少一列" Click="Group_RemoveColumn_Click"/>
-                                        <Separator/>
                                         <MenuItem Header="删除分类" Click="Group_Delete_Click" />
                                     </ContextMenu>
                                 </Border.ContextMenu>
@@ -124,14 +120,14 @@
                                     </Grid.RowDefinitions>
 
                                     <StackPanel Grid.Row="0">
-                                        <DockPanel Margin="0,0,0,8">
+                                        <DockPanel Margin="13,5,0,0">
                                             <TextBlock Text="{Binding Name}"
-                                                       FontSize="16"
+                                                       FontSize="13"
                                                        FontWeight="SemiBold"
                                                        Foreground="#E9EBF5"
                                                        DockPanel.Dock="Left"/>
-                                            <Border Width="22" Height="4" CornerRadius="2" Background="#38435A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                        </DockPanel>
+                                                <!--<Border Width="22" Height="4" CornerRadius="2" Background="#38435A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"/>-->
+                                            </DockPanel>
                                     </StackPanel>
 
                                     <ItemsControl Grid.Row="1"
@@ -144,7 +140,7 @@
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <WrapPanel IsItemsHost="True"
-                                                           ItemWidth="112"
+                                                           ItemWidth="118"
                                                            ItemHeight="140"
                                                            HorizontalAlignment="Center" />
                                             </ItemsPanelTemplate>
@@ -154,8 +150,8 @@
                                             <DataTemplate>
                                             <Border Width="112"
                                                     Height="132"
-                                                    Margin="4"
-                                                    Padding="10"
+                                                    Margin="3"
+                                                    Padding="0"
                                                     CornerRadius="10"
                                                     Background="#2B2E39"
                                                     BorderBrush="#3A3E4D"
@@ -194,41 +190,32 @@
                                                     </Style>
                                                 </Border.Style>
 
-                                                <Grid>
-                                                    <Grid.RowDefinitions>
-                                                        <RowDefinition Height="Auto"/>
-                                                        <RowDefinition Height="*"/>
-                                                    </Grid.RowDefinitions>
+                                                        <Grid>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto"/>
+                                                                <RowDefinition Height="*"/>
+                                                            </Grid.RowDefinitions>
 
-                                                    <Image Source="{Binding Icon}"
-                                                           Width="48"
-                                                           Height="48"
-                                                           Margin="0,8,0,8"
+                                                            <Image Source="{Binding Icon}"
+                                                           Width="95"
+                                                           Height="95"
+                                                           Margin="6"
                                                            HorizontalAlignment="Center"
                                                            Stretch="UniformToFill"/>
 
-                                                    <TextBlock Grid.Row="1"
-                                                               Text="{Binding Name}"
-                                                               TextAlignment="Center"
-                                                               FontSize="13"
-                                                               Foreground="#F0F2FF"
-                                                               TextWrapping="Wrap"
-                                                               LineHeight="18"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               MaxHeight="36"
-                                                               VerticalAlignment="Top"/>
-
-                                                    <Border Grid.Row="0"
-                                                            HorizontalAlignment="Right"
-                                                            VerticalAlignment="Top"
-                                                            Background="#35507A"
-                                                            CornerRadius="4"
-                                                            Padding="5,2"
-                                                            Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="已固定" FontSize="10" Foreground="White"/>
+                                                            <TextBlock Grid.Row="1"
+                                                            Text="{Binding Name}"
+                                                            TextAlignment="Center"
+                                                            FontSize="12"
+                                                            Foreground="#F0F2FF"
+                                                            TextWrapping="Wrap"
+                                                            LineHeight="18"
+                                                            TextTrimming="CharacterEllipsis"
+                                                            MaxHeight="36"
+                                                            Margin="0,2,0,0"
+                                                            VerticalAlignment="Top"/>
+                                                        </Grid>
                                                     </Border>
-                                                </Grid>
-                                            </Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
 
@@ -241,9 +228,8 @@
                                                                 <ControlTemplate>
                                                                     <Border BorderBrush="#3A3E4D" BorderThickness="1" CornerRadius="10" Padding="12" MinHeight="140" Background="#252836" AllowDrop="True">
                                                                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                                            <TextBlock Text="拖拽应用到此处" Foreground="#6F7485" FontSize="12" HorizontalAlignment="Center"/>
-                                                                            <TextBlock Text="默认 1 x 3" Foreground="#444A5E" FontSize="11" HorizontalAlignment="Center"/>
-                                                                        </StackPanel>
+                                                                                <TextBlock Text="拖拽应用到此处" Foreground="#6F7485" FontSize="12" HorizontalAlignment="Center"/>
+                                                                            </StackPanel>
                                                                     </Border>
                                                                 </ControlTemplate>
                                                             </Setter.Value>

@@ -222,8 +222,8 @@ namespace WINHOME
             }
 
             // clamp ratios
-            cfg.MainWidthRatio = ClampRatio(cfg.MainWidthRatio, 0.3, 0.9, 0.6);
-            cfg.MainHeightRatio = ClampRatio(cfg.MainHeightRatio, 0.3, 0.9, 0.5);
+            cfg.MainWidthRatio = ClampRatio(cfg.MainWidthRatio, 0.3, 0.9, 0.8);
+            cfg.MainHeightRatio = ClampRatio(cfg.MainHeightRatio, 0.3, 0.9, 0.7);
         }
 
         private static PinnedConfig CreateDefault()
@@ -234,8 +234,8 @@ namespace WINHOME
                 {
                     new PinnedGroup { Name = "常用", Columns = 3 }
                 },
-                MainWidthRatio = 0.6,
-                MainHeightRatio = 0.5
+                MainWidthRatio = 0.8,
+                MainHeightRatio = 0.7
             };
         }
 
@@ -274,8 +274,8 @@ namespace WINHOME
     internal class PinnedConfig
     {
         public List<PinnedGroup> Groups { get; set; } = new();
-        public double MainWidthRatio { get; set; } = 0.6;
-        public double MainHeightRatio { get; set; } = 0.5;
+        public double MainWidthRatio { get; set; } = 0.8;
+        public double MainHeightRatio { get; set; } = 0.7;
     }
 
     internal class PinnedGroup

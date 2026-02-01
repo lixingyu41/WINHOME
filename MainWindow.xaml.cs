@@ -8,6 +8,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Runtime.InteropServices;
 
 namespace WINHOME
 {
@@ -62,8 +63,7 @@ namespace WINHOME
         {
             if (_initialPositioned) return;
 
-            // 使用主显示器（primary screen）的可工作区
-            var work = SystemParameters.WorkArea;
+            var work = GetCurrentWorkArea();
 
             double screenW = work.Width;
             double screenH = work.Height;
@@ -171,11 +171,11 @@ namespace WINHOME
                 Background = (Brush)new BrushConverter().ConvertFromString("#3F3F3F")
             };
 
-            // close config when it loses focus
-            _configWindow.Deactivated += (s, ev) =>
-            {
-                try { _configWindow?.Close(); } catch { }
-            };
+            // close config when it loses focus (临时调试注释，保持配置页不被主界面顶替)
+            // _configWindow.Deactivated += (s, ev) =>
+            // {
+            //     try { _configWindow?.Close(); } catch { }
+            // };
 
             _configWindow.Closed += (s, ev) => { _configWindow = null; };
             _configWindow.Show();
@@ -204,7 +204,7 @@ namespace WINHOME
 
         public void ApplyRatios(double widthRatio, double heightRatio)
         {
-            var work = SystemParameters.WorkArea;
+            var work = GetCurrentWorkArea();
             double targetW = Math.Round(work.Width * widthRatio);
             double targetH = Math.Round(work.Height * heightRatio);
 
@@ -460,6 +460,7 @@ namespace WINHOME
         {
             _dragStartPoint = e.GetPosition(null);
             _draggingApp = (sender as FrameworkElement)?.DataContext as AppInfo;
+            e.Handled = false; // 让自身拖拽生效，但避免触发分类拖动逻辑
         }
 
         private void Tile_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -481,6 +482,13 @@ namespace WINHOME
 
         private void Group_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            // 如果点在应用磁贴上，不触发分类拖动（避免和应用拖拽冲突）
+            if (GetDataFromPoint<AppInfo>(e.GetPosition(this)) != null)
+            {
+                _draggingGroup = null;
+                return;
+            }
+
             _groupDragStartPoint = e.GetPosition(null);
             // if starting on resize thumb, skip group-drag init
             if (e.OriginalSource is System.Windows.Controls.Primitives.Thumb)
@@ -701,10 +709,10 @@ namespace WINHOME
                 };
                 Process.Start(psi);
 
-                if (!IsPinned)
-                {
-                    Hide();
-                }
+                // if (!IsPinned)
+                // {
+                //     Hide(); // 调试：打开应用后不自动隐藏主窗口
+                // }
             }
             catch (Exception ex)
             {
@@ -740,6 +748,55 @@ namespace WINHOME
             }
             return null;
         }
+
+        private Rect GetCurrentWorkArea()
+        {
+            try
+            {
+                if (GetCursorPos(out POINT p))
+                {
+                    IntPtr hMon = MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST);
+                    MONITORINFOEX info = new MONITORINFOEX();
+                    info.cbSize = Marshal.SizeOf(info);
+                    if (GetMonitorInfo(hMon, ref info))
+                    {
+                        return new Rect(info.rcWork.left, info.rcWork.top,
+                                        info.rcWork.right - info.rcWork.left,
+                                        info.rcWork.bottom - info.rcWork.top);
+                    }
+                }
+            }
+            catch { }
+            return SystemParameters.WorkArea;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int X; public int Y; }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        private struct MONITORINFOEX
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public int dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string szDevice;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int left, top, right, bottom; }
+
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+        [DllImport("user32.dll")]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
         #endregion
     }

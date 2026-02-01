@@ -58,9 +58,9 @@
         <DockPanel Grid.Row="0" Margin="12,10" LastChildFill="False">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="宽度%" Foreground="#EAEAEA" VerticalAlignment="Center"/>
-                <TextBox x:Name="WidthPercentBox" Width="60" Margin="6,0" VerticalAlignment="Center" />
+                <TextBox x:Name="WidthPercentBox" Width="30" Margin="6,0" VerticalAlignment="Center" />
                 <TextBlock Text="高度%" Foreground="#EAEAEA" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                <TextBox x:Name="HeightPercentBox" Width="60" Margin="6,0" VerticalAlignment="Center" />
+                <TextBox x:Name="HeightPercentBox" Width="30" Margin="6,0" VerticalAlignment="Center" />
                 <Button Content="应用" Width="72" Margin="12,0,0,0" Click="ApplySizeButton_Click"/>
             </StackPanel>
         </DockPanel>
@@ -94,20 +94,21 @@
                                         <!-- MUST match tile size -->
                                         <WrapPanel
                                             Orientation="Horizontal"
-                                            ItemWidth="128"
-                                            ItemHeight="144"/>
+                                            ItemWidth="118"
+                                            ItemHeight="140"
+                                            HorizontalAlignment="Left"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
 
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
 
-                                        <Border
-                                            Width="112"
+                                            <Border
+                                                Width="112"
                                             Height="132"
-                                            Margin="8"
-                                            Padding="10"
-                                            CornerRadius="8">
+                                            Margin="3"
+                                            Padding="0"
+                                            CornerRadius="10">
 
                                             <Border.Style>
                                                 <Style TargetType="Border">
@@ -131,6 +132,23 @@
                                             <Grid
                                                 MouseLeftButtonUp="AppTile_MouseLeftButtonUp">
 
+                                                <Grid.ToolTip>
+                                                    <ToolTip
+                                                        Placement="Mouse"
+                                                        ToolTipService.ShowDuration="60000"
+                                                        ToolTipService.InitialShowDelay="150"
+                                                        Background="#2B2E39"
+                                                        Foreground="White"
+                                                        Padding="8"
+                                                        HasDropShadow="True">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   TextWrapping="Wrap"
+                                                                   TextTrimming="None"
+                                                                   MaxWidth="360"
+                                                                   FontSize="13"/>
+                                                    </ToolTip>
+                                                </Grid.ToolTip>
+
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="*"/>
@@ -139,9 +157,9 @@
                                                 <!-- Icon -->
                                                 <Image
                                                     Source="{Binding Icon}"
-                                                    Width="32"
-                                                    Height="32"
-                                                    Margin="0,4,0,6"
+                                                    Width="95"
+                                                    Height="95"
+                                                    Margin="6"
                                                     HorizontalAlignment="Center"
                                                     Stretch="Uniform"/>
 
@@ -150,8 +168,9 @@
                                                     Grid.Row="1"
                                                     Text="{Binding Name}"
                                                     FontSize="12"
-                                                    LineHeight="16"
-                                                    MaxHeight="32"
+                                                    LineHeight="18"
+                                                    MaxHeight="36"
+                                                    Margin="0,2,0,0"
                                                     TextWrapping="Wrap"
                                                     TextAlignment="Center"
                                                     Foreground="White"

@@ -33,7 +33,7 @@ namespace WINHOME
         /// <summary>
         /// 水平相邻两块磁贴对应角之间的间距（包含磁贴宽与左右外边距），用于拖动换列阈值计算与布局宽度估算。
         /// </summary>
-        public const double IconSpacing = 120.0; // 112 tile width + margin(4*2)
+        public const double IconSpacing = 116.0; // tile width 112 + margin(2*2)
 
         public double GroupWidth => Columns * IconSpacing + 16; // padding 8*2
 

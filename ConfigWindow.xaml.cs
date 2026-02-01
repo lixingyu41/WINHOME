@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,12 +9,15 @@ using System.Diagnostics;
 using System.Windows.Threading;
 using System.Threading.Tasks;
 using System.Windows.Data;
+using System.Text;
 
 namespace WINHOME
 {
     public partial class ConfigWindow : Window
     {
         private DispatcherTimer? _bubbleTimer;
+        private Point _dragStartPoint;
+        private AppInfo? _draggingApp;
 
         public ConfigWindow()
         {
@@ -101,7 +105,7 @@ namespace WINHOME
                             var first = items[0] as AppInfo;
                             if (first != null)
                             {
-                                string letter = first.Name.Substring(0, 1).ToUpper();
+                                string letter = GetGroupKey(first.Name).ToString();
                                 ShowBubble(letter);
                             }
                         }
@@ -129,9 +133,13 @@ namespace WINHOME
                 var list = items.ToList();
                 ApplyPinnedFlags(list);
 
-                var groups = list.GroupBy(a => (a.Name ?? "").Substring(0, 1).ToUpper(), StringComparer.OrdinalIgnoreCase)
-                                  .OrderBy(g => g.Key)
-                                  .Select(g => new { Key = g.Key, Items = g.ToList() })
+                var order = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#";
+                var groups = list.GroupBy(a => GetGroupKey(a.Name))
+                                  .OrderBy(g => {
+                                      int idx = order.IndexOf(g.Key);
+                                      return idx >= 0 ? idx : int.MaxValue;
+                                  })
+                                  .Select(g => new { Key = g.Key.ToString(), Items = g.ToList() })
                                   .ToList();
                 GroupsControl.ItemsSource = groups;
             }
@@ -360,6 +368,68 @@ namespace WINHOME
             }
             return fallback;
         }
+
+        private static char GetGroupKey(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return '#';
+            var s = name.Trim();
+            char c = s[0];
+            if (c >= 'A' && c <= 'Z') return c;
+            if (c >= 'a' && c <= 'z') return char.ToUpperInvariant(c);
+            if (char.IsDigit(c)) return '#';
+
+            try
+            {
+                var bytes = GbkEncoding.Value.GetBytes(new[] { c });
+                if (bytes.Length >= 2)
+                {
+                    int code = bytes[0] << 8 | bytes[1];
+                    // GB2312 主区
+                    if (code >= 0xB0A1 && code <= 0xB0C4) return 'A';
+                    if (code >= 0xB0C5 && code <= 0xB2C0) return 'B';
+                    if (code >= 0xB2C1 && code <= 0xB4ED) return 'C';
+                    if (code >= 0xB4EE && code <= 0xB6E9) return 'D';
+                    if (code >= 0xB6EA && code <= 0xB7A1) return 'E';
+                    if (code >= 0xB7A2 && code <= 0xB8C0) return 'F';
+                    if (code >= 0xB8C1 && code <= 0xB9FD) return 'G';
+                    if (code >= 0xB9FE && code <= 0xBBF6) return 'H';
+                    if (code >= 0xBBF7 && code <= 0xBFA5) return 'J';
+                    if (code >= 0xBFA6 && code <= 0xC0AB) return 'K';
+                    if (code >= 0xC0AC && code <= 0xC2E7) return 'L';
+                    if (code >= 0xC2E8 && code <= 0xC4C2) return 'M';
+                    if (code >= 0xC4C3 && code <= 0xC5B5) return 'N';
+                    if (code >= 0xC5B6 && code <= 0xC5BD) return 'O';
+                    if (code >= 0xC5BE && code <= 0xC6D9) return 'P';
+                    if (code >= 0xC6DA && code <= 0xC8BA) return 'Q';
+                    if (code >= 0xC8BB && code <= 0xC8F5) return 'R';
+                    if (code >= 0xC8F6 && code <= 0xCBF0) return 'S';
+                    if (code >= 0xCBFA && code <= 0xCDD9) return 'T';
+                    if (code >= 0xCDDA && code <= 0xCEF3) return 'W';
+                    if (code >= 0xCEF4 && code <= 0xD188) return 'X';
+                    if (code >= 0xD1B9 && code <= 0xD4D0) return 'Y';
+                    if (code >= 0xD4D1 && code <= 0xD7F9) return 'Z';
+
+                    // GBK/GB18030 扩展近似映射（常用区位表）
+                    int[] areaCode = {45217,45253,45761,46318,46826,47010,47297,47614,48119,49062,49324,49896,50371,50614,50622,50906,51387,51446,52218,52698,52980,53689,54481,55290,56195,57019,57389};
+                    char[] letters = "ABCDEFGHJKLMNOPQRSTWXYZ#".ToCharArray();
+                    for (int i = 0; i < areaCode.Length - 1; i++)
+                    {
+                        if (code >= areaCode[i] && code < areaCode[i + 1])
+                            return letters[i];
+                    }
+                }
+            }
+            catch { }
+
+            return '#';
+        }
+
+        private static readonly Lazy<Encoding> GbkEncoding = new(() =>
+        {
+            try { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); } catch { }
+            return Encoding.GetEncoding("GB2312"); // 按照 GB2312 对应首字母表
+        });
+
 
         private static T? FindAncestor<T>(DependencyObject? child) where T : DependencyObject
         {

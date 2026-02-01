@@ -2,11 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Interop;
 
 namespace WINHOME
 {
@@ -154,72 +152,16 @@ namespace WINHOME
             return null;
         }
 
-        private static ImageSource? GetIconFromShell(string path)
-        {
-            try
-            {
-                // try jumbo 256px first
-                var jumbo = GetJumboIcon(path);
-                if (jumbo != null) return jumbo;
-
-                // fallback: large shell icon
-                var shinfo = new SHFILEINFO();
-                IntPtr res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES);
-                if (shinfo.hIcon != IntPtr.Zero)
-                {
-                    try
-                    {
-                        var bmp = Imaging.CreateBitmapSourceFromHIcon(shinfo.hIcon, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(96, 96));
-                        bmp.Freeze();
-                        return bmp;
-                    }
-                    finally
-                    {
-                        DestroyIcon(shinfo.hIcon);
-                    }
-                }
-            }
-            catch { }
-            return null;
-        }
-
-        private static ImageSource? GetJumboIcon(string path)
-        {
-            try
-            {
-                var shinfo = new SHFILEINFO();
-                var hSuccess = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES);
-                if (hSuccess == IntPtr.Zero) return null;
-
-                Guid iidImageList = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"); // IImageList
-                if (SHGetImageList(SHIL_JUMBO, ref iidImageList, out var imageList) != 0) return null;
-
-                imageList.GetIcon(shinfo.iIcon, (int)ImageListDrawItemConstants.ILD_TRANSPARENT, out var hIcon);
-                if (hIcon == IntPtr.Zero) return null;
-
-                try
-                {
-                    var bmp = Imaging.CreateBitmapSourceFromHIcon(hIcon, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(256, 256));
-                    bmp.Freeze();
-                    return bmp;
-                }
-                finally
-                {
-                    DestroyIcon(hIcon);
-                }
-            }
-            catch { }
-            return null;
-        }
-
         private static readonly string _iconCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MyLauncher", "iconcache");
+        private const string _iconCacheVersion = "v4"; // invalidate old upscaled caches
 
         private static ImageSource? GetIconCached(string targetPath, string originalPath)
         {
             try
             {
                 Directory.CreateDirectory(_iconCacheDir);
-                string key = (targetPath ?? originalPath ?? "").ToLowerInvariant();
+                var img = IconExtractor.GetIcon(targetPath ?? originalPath, out var cacheKeyPath);
+                string key = $"{_iconCacheVersion}:{(cacheKeyPath ?? targetPath ?? originalPath ?? "").ToLowerInvariant()}";
                 using var md5 = MD5.Create();
                 var hash = BitConverter.ToString(md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key))).Replace("-", "").ToLowerInvariant();
                 string png = Path.Combine(_iconCacheDir, hash + ".png");
@@ -227,114 +169,33 @@ namespace WINHOME
                 {
                     try
                     {
-                        var img = new BitmapImage();
-                        img.BeginInit();
-                        img.CacheOption = BitmapCacheOption.OnLoad;
-                        img.UriSource = new Uri(png);
-                        img.EndInit();
-                        img.Freeze();
-                        return img;
+                        var cachedImg = new BitmapImage();
+                        cachedImg.BeginInit();
+                        cachedImg.CacheOption = BitmapCacheOption.OnLoad;
+                        cachedImg.UriSource = new Uri(png);
+                        cachedImg.EndInit();
+                        cachedImg.Freeze();
+                        return cachedImg;
                     }
                     catch { }
                 }
 
-                var src = GetIconFromShell(targetPath ?? originalPath);
-                if (src != null)
+                if (img != null)
                 {
                     try
                     {
                         // save to disk as PNG
                         var encoder = new PngBitmapEncoder();
-                        encoder.Frames.Add(BitmapFrame.Create((BitmapSource)src));
+                        encoder.Frames.Add(BitmapFrame.Create((BitmapSource)img));
                         using var fs = File.OpenWrite(png);
                         encoder.Save(fs);
                     }
                     catch { }
                 }
-                return src;
+                return img;
             }
             catch { }
             return null;
-        }
-
-        // ResolveShortcutTarget intentionally omitted to avoid COM dependency; using file path directly.
-
-        private const uint SHGFI_ICON = 0x000000100;
-        private const uint SHGFI_SMALLICON = 0x000000001;
-        private const uint SHGFI_LARGEICON = 0x000000000;
-        private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
-        private const uint SHGFI_SYSICONINDEX = 0x000004000;
-
-        private const int SHIL_JUMBO = 0x4;
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        private struct SHFILEINFO
-        {
-            public IntPtr hIcon;
-            public int iIcon;
-            public uint dwAttributes;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string szDisplayName;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
-            public string szTypeName;
-        }
-
-        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-        private static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool DestroyIcon(IntPtr hIcon);
-
-        [DllImport("shell32.dll", EntryPoint = "#727")]
-        private static extern int SHGetImageList(int iImageList, ref Guid riid, out IImageList ppv);
-
-        [ComImport, Guid("46EB5926-582E-4017-9FDF-E8998DAA0950"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IImageList
-        {
-            [PreserveSig]
-            int Add(IntPtr hbmImage, IntPtr hbmMask, ref int pi);
-            [PreserveSig]
-            int ReplaceIcon(int i, IntPtr hicon, ref int pi);
-            [PreserveSig]
-            int SetOverlayImage(int iImage, int iOverlay);
-            [PreserveSig]
-            int Replace(int i, IntPtr hbmImage, IntPtr hbmMask);
-            [PreserveSig]
-            int AddMasked(IntPtr hbmImage, int crMask, ref int pi);
-            [PreserveSig]
-            int Draw(ref IMAGELISTDRAWPARAMS pimldp);
-            [PreserveSig]
-            int Remove(int i);
-            [PreserveSig]
-            int GetIcon(int i, int flags, out IntPtr picon);
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct IMAGELISTDRAWPARAMS
-        {
-            public int cbSize;
-            public IntPtr himl;
-            public int i;
-            public IntPtr hdcDst;
-            public int x;
-            public int y;
-            public int cx;
-            public int cy;
-            public int xBitmap;    // x offest from the upperleft of bitmap
-            public int yBitmap;    // y offset from the upperleft of bitmap
-            public int rgbBk;
-            public int rgbFg;
-            public int fStyle;
-            public int dwRop;
-            public int fState;
-            public int Frame;
-            public int crEffect;
-        }
-
-        [Flags]
-        private enum ImageListDrawItemConstants
-        {
-            ILD_TRANSPARENT = 0x00000001,
         }
     }
 }
