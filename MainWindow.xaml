@@ -179,8 +179,8 @@
 
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                            <Border Width="112"
-                                                    Height="132"
+                                            <Border Width="80"
+                                                    Height="100"
                                                     Margin="3"
                                                     Padding="0"
                                                     CornerRadius="10"
@@ -238,9 +238,9 @@
                                                             </Grid.RowDefinitions>
 
                                                             <Image Source="{Binding Icon}"
-                                                           Width="95"
-                                                           Height="95"
-                                                           Margin="6"
+                                                           Width="65"
+                                                           Height="65"
+                                                           Margin="21,21,21,5"
                                                            HorizontalAlignment="Center"
                                                            Stretch="UniformToFill">
                                                                 <Image.Style>
@@ -255,16 +255,16 @@
                                                                 </Image.Style>
                                                             </Image>
 
-                                                            <TextBlock Grid.Row="1"
+                                                            <TextBlock Grid.Row="2"
                                                             Text="{Binding Name}"
                                                             TextAlignment="Center"
                                                             FontSize="12"
                                                             Foreground="#F0F2FF"
                                                             TextWrapping="Wrap"
                                                             LineHeight="18"
-                                                            TextTrimming="CharacterEllipsis"
+                                                            TextTrimming="None"
                                                             MaxHeight="36"
-                                                            Margin="0,2,0,0"
+                                                            Margin="5,0,5,5"
                                                             VerticalAlignment="Top">
                                                                 <TextBlock.Style>
                                                                     <Style TargetType="TextBlock">

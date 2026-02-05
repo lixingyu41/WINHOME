@@ -13,7 +13,6 @@ namespace WINHOME
     {
         private HotkeyService? _hotkeyService;
         private MainWindow? _mainWindow;
-        private string? _logPath;
 
         protected override void OnStartup(StartupEventArgs e)
         {

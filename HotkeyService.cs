@@ -93,7 +93,6 @@ namespace WINHOME
         // fallback message window for RegisterHotKey if hook receives no events
         private HwndSource? _hkSource;
         private readonly int _hkId = 1001;
-        private System.Timers.Timer? _fallbackTimer;
         private System.Timers.Timer? _pollTimer; // polling-based detector for Win+Alt
         private bool _pollState;
 

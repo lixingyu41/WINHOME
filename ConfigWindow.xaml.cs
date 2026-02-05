@@ -16,8 +16,6 @@ namespace WINHOME
     public partial class ConfigWindow : Window
     {
         private DispatcherTimer? _bubbleTimer;
-        private Point _dragStartPoint;
-        private AppInfo? _draggingApp;
 
         public ConfigWindow()
         {
