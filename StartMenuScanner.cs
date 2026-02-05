@@ -119,10 +119,9 @@ namespace WINHOME
                             if (ext.Length == 0) continue;
                             if (!exts.Contains(ext)) continue;
                             var name = Path.GetFileNameWithoutExtension(file);
-                            string target = file;
 
-                            var icon = GetIconCached(target, file);
-                            list.Add(new AppInfo { Name = name, Path = file, Icon = icon });
+                            // 读取元数据，图标懒加载以加速扫描
+                            list.Add(new AppInfo { Name = name, Path = file, Icon = GetIconFromCacheOnly(file) });
                         }
                                 catch { }
                             }
@@ -147,6 +146,33 @@ namespace WINHOME
             {
                 if (string.IsNullOrWhiteSpace(path)) return null;
                 return GetIconCached(path, path);
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// 只尝试从磁盘缓存读取图标，不做提取，保证快速返回。
+        /// </summary>
+        public static ImageSource? GetIconFromCacheOnly(string path)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path)) return null;
+                Directory.CreateDirectory(_iconCacheDir);
+                string key = $"{_iconCacheVersion}:{path.Trim().ToLowerInvariant()}";
+                using var md5 = MD5.Create();
+                var hash = BitConverter.ToString(md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key))).Replace("-", "").ToLowerInvariant();
+                string png = Path.Combine(_iconCacheDir, hash + ".png");
+                if (!File.Exists(png)) return null;
+
+                var cachedImg = new BitmapImage();
+                cachedImg.BeginInit();
+                cachedImg.CacheOption = BitmapCacheOption.OnLoad;
+                cachedImg.UriSource = new Uri(png);
+                cachedImg.EndInit();
+                cachedImg.Freeze();
+                return cachedImg;
             }
             catch { }
             return null;

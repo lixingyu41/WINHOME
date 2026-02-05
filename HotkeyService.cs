@@ -26,8 +26,11 @@ namespace WINHOME
             public UIntPtr dwExtraInfo;
         }
 
+        private bool _hkRegistered;
+
         private void TryRegisterHotkeyFallback()
         {
+            if (_hkRegistered) return;
             try
             {
                 var parameters = new HwndSourceParameters("MyLauncher_HKWindow") { ParentWindow = new IntPtr(-3), WindowStyle = 0 };
@@ -39,6 +42,10 @@ namespace WINHOME
                 {
                     int err = Marshal.GetLastWin32Error();
                     Logger.Log("HotkeyService: RegisterHotKey fallback failed: " + err);
+                }
+                else
+                {
+                    _hkRegistered = true;
                 }
             }
             catch (Exception ex)
@@ -103,26 +110,8 @@ namespace WINHOME
                 Logger.Log("HotkeyService: Hook installed, id=" + _hookId);
             }
 
-            // after short delay, if no hook events observed, try RegisterHotKey fallback
-            try
-            {
-                _fallbackTimer = new System.Timers.Timer(800) { AutoReset = false };
-                _fallbackTimer.Elapsed += (s, e) =>
-                {
-                    if (_eventCounter == 0)
-                    {
-                        Logger.Log("HotkeyService: no hook events detected, attempting RegisterHotKey fallback");
-                        TryRegisterHotkeyFallback();
-                    }
-                    _fallbackTimer?.Dispose();
-                    _fallbackTimer = null;
-                };
-                _fallbackTimer.Start();
-            }
-            catch (Exception ex)
-            {
-                Logger.Log("HotkeyService: fallback timer exception: " + ex.ToString());
-            }
+            // always register a message-only hotkey window to survive protected processes like Task Manager
+            TryRegisterHotkeyFallback();
 
             // start polling-based detection as robust fallback for Win+Alt
             try
@@ -262,10 +251,14 @@ namespace WINHOME
             {
                 if (_hkSource != null)
                 {
-                    UnregisterHotKey(_hkSource.Handle, _hkId);
+                    if (_hkRegistered)
+                    {
+                        UnregisterHotKey(_hkSource.Handle, _hkId);
+                    }
                     _hkSource.RemoveHook(HkWndProc);
                     _hkSource.Dispose();
                     _hkSource = null;
+                    _hkRegistered = false;
                 }
             }
             catch (Exception ex)

@@ -89,6 +89,13 @@ namespace WINHOME
                     if (g.Apps.Count != before) removed = true;
                 }
 
+                if (cfg.DockApps != null)
+                {
+                    int beforeDock = cfg.DockApps.Count;
+                    cfg.DockApps.RemoveAll(a => string.Equals(a.Path, path, StringComparison.OrdinalIgnoreCase));
+                    if (cfg.DockApps.Count != beforeDock) removed = true;
+                }
+
                 if (removed)
                 {
                     SaveInternal(cfg, raiseEvent: true);
@@ -102,7 +109,9 @@ namespace WINHOME
             lock (_sync)
             {
                 var cfg = LoadUnlocked();
-                return new HashSet<string>(cfg.Groups.SelectMany(g => g.Apps).Select(a => a.Path), StringComparer.OrdinalIgnoreCase);
+                var paths = cfg.Groups.SelectMany(g => g.Apps).Select(a => a.Path)
+                    .Concat((cfg.DockApps ?? new List<PinnedApp>()).Select(a => a.Path));
+                return new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
             }
         }
 
@@ -143,11 +152,12 @@ namespace WINHOME
             }
         }
 
-        public static void ReplaceWith(IEnumerable<TileGroupView> groups)
+        public static void ReplaceWith(IEnumerable<TileGroupView> groups, IEnumerable<AppInfo>? dockApps = null)
         {
             lock (_sync)
             {
-                var cfg = new PinnedConfig();
+                var cfg = LoadUnlocked();
+                cfg.Groups.Clear();
                 foreach (var g in groups.OrderBy(g => g.Order))
                 {
                     var grp = new PinnedGroup { Name = g.Name, Order = g.Order, Columns = g.Columns };
@@ -157,6 +167,20 @@ namespace WINHOME
                     }
                     cfg.Groups.Add(grp);
                 }
+
+                if (dockApps != null)
+                {
+                    cfg.DockApps = dockApps
+                        .Where(a => !string.IsNullOrWhiteSpace(a.Path))
+                        .Select(a => new PinnedApp
+                        {
+                            Name = string.IsNullOrWhiteSpace(a.Name) ? Path.GetFileNameWithoutExtension(a.Path) : a.Name,
+                            Path = a.Path,
+                            Group = "Dock"
+                        })
+                        .ToList();
+                }
+
                 SaveInternal(cfg, raiseEvent: true);
             }
         }
@@ -221,6 +245,19 @@ namespace WINHOME
                 if (g.Columns <= 0) g.Columns = 3;
             }
 
+            if (cfg.DockApps == null)
+            {
+                cfg.DockApps = new List<PinnedApp>();
+            }
+            else
+            {
+                cfg.DockApps = cfg.DockApps
+                    .Where(a => !string.IsNullOrWhiteSpace(a.Path))
+                    .GroupBy(a => a.Path, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+            }
+
             // clamp ratios
             cfg.MainWidthRatio = ClampRatio(cfg.MainWidthRatio, 0.3, 0.9, 0.8);
             cfg.MainHeightRatio = ClampRatio(cfg.MainHeightRatio, 0.3, 0.9, 0.7);
@@ -234,6 +271,7 @@ namespace WINHOME
                 {
                     new PinnedGroup { Name = "常用", Columns = 3 }
                 },
+                DockApps = new List<PinnedApp>(),
                 MainWidthRatio = 0.8,
                 MainHeightRatio = 0.7
             };
@@ -274,6 +312,7 @@ namespace WINHOME
     internal class PinnedConfig
     {
         public List<PinnedGroup> Groups { get; set; } = new();
+        public List<PinnedApp> DockApps { get; set; } = new();
         public double MainWidthRatio { get; set; } = 0.8;
         public double MainHeightRatio { get; set; } = 0.7;
     }

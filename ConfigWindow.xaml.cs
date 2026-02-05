@@ -142,6 +142,15 @@ namespace WINHOME
                                   .Select(g => new { Key = g.Key.ToString(), Items = g.ToList() })
                                   .ToList();
                 GroupsControl.ItemsSource = groups;
+
+                // lazy-load icons in background to reduce UI init time
+                IconMemoryCache.WarmIcons(list, (app, icon) =>
+                {
+                    if (icon != null)
+                    {
+                        Dispatcher.InvokeAsync(() => app.Icon = icon, DispatcherPriority.Background);
+                    }
+                });
             }
             catch { }
         }

@@ -6,8 +6,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.VisualBasic;
 using System.Runtime.InteropServices;
 
 namespace WINHOME
@@ -23,6 +25,8 @@ namespace WINHOME
         private AppInfo? _draggingApp;
         private Point _groupDragStartPoint;
         private TileGroupView? _draggingGroup;
+        private Point _dockDragStartPoint;
+        private AppInfo? _draggingDockApp;
         private AppInfo? _selectedApp;
         private TileGroupView? _selectedGroup;
         private bool _ignoreConfigChanged;
@@ -32,6 +36,7 @@ namespace WINHOME
         private bool _isGroupDragBlockedByResize;
 
         public ObservableCollection<TileGroupView> TileGroups { get; } = new();
+        public ObservableCollection<AppInfo> QuickDockApps { get; } = new();
 
         public MainWindow()
         {
@@ -41,7 +46,7 @@ namespace WINHOME
             Loaded += MainWindow_Loaded;
             IsVisibleChanged += MainWindow_IsVisibleChanged;
             KeyDown += Window_KeyDown;
-
+            SourceInitialized += (_, __) => ForceTopmost();
             PinConfigManager.ConfigChanged += PinConfigManager_ConfigChanged;
         }
 
@@ -57,6 +62,7 @@ namespace WINHOME
             // 初次加载时设置初始位置与大小（只执行一次）
             EnsureInitialPositionAndSize();
             RefreshPinnedTiles();
+            WarmPinnedIconsAsync();
         }
 
         private void EnsureInitialPositionAndSize()
@@ -107,12 +113,13 @@ namespace WINHOME
             {
                 ApplyLatestSizeFromConfig();
                 RefreshPinnedTiles();
+                WarmPinnedIconsAsync();
             }
             else
             {
                 // When window is hidden, reset pin state so next open is not pinned
                 IsPinned = false;
-                StartMenuScanner.ScheduleClearCache(TimeSpan.FromSeconds(20));
+                // 保持缓存，避免下次唤起重新加载图标；内存清理由 Config/长时间策略处理
             }
         }
 
@@ -200,6 +207,7 @@ namespace WINHOME
         {
             var ratios = PinConfigManager.GetWindowRatios();
             ApplyRatios(ratios.widthRatio, ratios.heightRatio);
+            WarmPinnedIconsAsync();
         }
 
         public void ApplyRatios(double widthRatio, double heightRatio)
@@ -230,6 +238,7 @@ namespace WINHOME
 
                 _ignoreConfigChanged = true;
                 TileGroups.Clear();
+                QuickDockApps.Clear();
 
                 foreach (var g in cfg.Groups.OrderBy(g => g.Order))
                 {
@@ -246,12 +255,29 @@ namespace WINHOME
                             Name = app.Name,
                             Path = app.Path,
                             Group = group.Name,
-                            Icon = StartMenuScanner.GetIconForPath(app.Path),
+                            Icon = TryFastIcon(app.Path),
                             IsPinned = true
                         };
                         group.Items.Add(info);
                     }
                     TileGroups.Add(group);
+                }
+
+                if (cfg.DockApps != null)
+                {
+                    foreach (var app in cfg.DockApps)
+                    {
+                        if (string.IsNullOrWhiteSpace(app.Path)) continue;
+                        var info = new AppInfo
+                        {
+                            Name = string.IsNullOrWhiteSpace(app.Name) ? System.IO.Path.GetFileNameWithoutExtension(app.Path) : app.Name,
+                            Path = app.Path,
+                            Group = "Dock",
+                            Icon = TryFastIcon(app.Path),
+                            IsPinned = true
+                        };
+                        QuickDockApps.Add(info);
+                    }
                 }
             }
             catch { }
@@ -267,7 +293,7 @@ namespace WINHOME
             {
                 _ignoreConfigChanged = true;
                 NormalizeGroupOrder();
-                PinConfigManager.ReplaceWith(TileGroups);
+                PinConfigManager.ReplaceWith(TileGroups, QuickDockApps);
             }
             finally
             {
@@ -526,6 +552,25 @@ namespace WINHOME
             _lastRightClickPoint = e.GetPosition(this);
         }
 
+        private void GroupName_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2) return;
+            if ((sender as FrameworkElement)?.DataContext is not TileGroupView group) return;
+
+            string prompt = "输入新的分类名称：";
+            string defaultName = group.Name;
+            string newName = Interaction.InputBox(prompt, "重命名分类", defaultName);
+            if (string.IsNullOrWhiteSpace(newName) || string.Equals(newName, group.Name, StringComparison.Ordinal))
+                return;
+
+            group.Name = newName.Trim();
+            foreach (var app in group.Items)
+            {
+                app.Group = group.Name;
+            }
+            PersistTiles();
+        }
+
         private void Tile_Drop(object sender, DragEventArgs e)
         {
             if (!e.Data.GetDataPresent(typeof(AppInfo))) return;
@@ -533,7 +578,7 @@ namespace WINHOME
             var target = (sender as FrameworkElement)?.DataContext as AppInfo;
             if (dragged == null || target == null) return;
 
-            MoveTile(dragged, target.Group, targetBefore: target);
+            MoveTile(dragged, target.Group, targetBefore: target, dropOnTile: true);
         }
 
         private void Group_DragOver(object sender, DragEventArgs e)
@@ -542,6 +587,15 @@ namespace WINHOME
             {
                 e.Effects = DragDropEffects.Move;
             }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+            e.Handled = true;
+        }
+
+        private void Group_DragLeave(object sender, DragEventArgs e)
+        {
         }
 
         private void Group_Drop(object sender, DragEventArgs e)
@@ -550,10 +604,7 @@ namespace WINHOME
             {
                 var draggedGroup = e.Data.GetData(typeof(TileGroupView)) as TileGroupView;
                 var targetGroup = (sender as FrameworkElement)?.DataContext as TileGroupView;
-                if (draggedGroup != null)
-                {
-                    MoveGroup(draggedGroup, targetGroup);
-                }
+                MoveGroupToIndex(draggedGroup, targetGroup);
                 return;
             }
 
@@ -563,21 +614,51 @@ namespace WINHOME
                 if (dragged == null) return;
 
                 string groupName = dragged.Group ?? "常用";
+                TileGroupView? targetGroup = null;
                 var fe = sender as FrameworkElement;
                 if (fe != null)
                 {
                     if (fe.Tag is string tagName && !string.IsNullOrWhiteSpace(tagName))
                         groupName = tagName;
                     else if (fe.DataContext is TileGroupView gtv)
+                    {
+                        targetGroup = gtv;
                         groupName = gtv.Name;
+                    }
                     else if (fe.DataContext is string nameCtx && !string.IsNullOrWhiteSpace(nameCtx))
                         groupName = nameCtx;
                 }
-                MoveTile(dragged, groupName, targetBefore: null);
+                targetGroup ??= TileGroups.FirstOrDefault(g => string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
+
+                AppInfo? targetBefore = null; // 不做中间插入，仅用于同级对调
+                if (QuickDockApps.Contains(dragged))
+                {
+                    // from dock back to group: append到末尾
+                    QuickDockApps.Remove(dragged);
+                    var clone = new AppInfo
+                    {
+                        Name = dragged.Name,
+                        Path = dragged.Path,
+                        Group = groupName,
+                        Icon = dragged.Icon,
+                        IsPinned = true
+                    };
+                    if (targetGroup == null)
+                    {
+                        targetGroup = new TileGroupView { Name = groupName };
+                        TileGroups.Add(targetGroup);
+                    }
+                    targetGroup.Items.Add(clone);
+                    PersistTiles();
+                }
+                else
+                {
+                    MoveTile(dragged, groupName, targetBefore, dropOnTile: false);
+                }
             }
         }
 
-        private void MoveTile(AppInfo dragged, string targetGroupName, AppInfo? targetBefore)
+        private void MoveTile(AppInfo dragged, string targetGroupName, AppInfo? targetBefore, bool dropOnTile)
         {
             var sourceGroup = TileGroups.FirstOrDefault(g => g.Items.Contains(dragged));
             if (sourceGroup == null) return;
@@ -589,26 +670,27 @@ namespace WINHOME
                 TileGroups.Add(targetGroup);
             }
 
+            bool sameGroup = ReferenceEquals(sourceGroup, targetGroup);
             int oldIndex = sourceGroup.Items.IndexOf(dragged);
-            sourceGroup.Items.Remove(dragged);
+            if (oldIndex < 0) return;
 
-            int insertIndex;
-            if (targetBefore != null && targetGroup.Items.Contains(targetBefore))
+            if (sameGroup && dropOnTile && targetBefore != null)
             {
-                insertIndex = targetGroup.Items.IndexOf(targetBefore);
-                if (targetGroup == sourceGroup && oldIndex < insertIndex) insertIndex--;
-            }
-            else
-            {
-                insertIndex = targetGroup.Items.Count;
+                int targetIndex = targetGroup.Items.IndexOf(targetBefore);
+                if (targetIndex >= 0 && targetIndex != oldIndex)
+                {
+                    sourceGroup.Items[oldIndex] = targetBefore;
+                    sourceGroup.Items[targetIndex] = dragged;
+                    PersistTiles();
+                }
+                return;
             }
 
-            if (insertIndex < 0) insertIndex = 0;
-            if (insertIndex > targetGroup.Items.Count) insertIndex = targetGroup.Items.Count;
-
+            // 规则2：跨容器或非对调，统一追加末尾
+            sourceGroup.Items.RemoveAt(oldIndex);
             dragged.Group = targetGroup.Name;
             dragged.IsPinned = true;
-            targetGroup.Items.Insert(insertIndex, dragged);
+            targetGroup.Items.Add(dragged);
 
             // 清理空组（保留默认组）
             if (sourceGroup.Items.Count == 0 &&
@@ -621,16 +703,18 @@ namespace WINHOME
             PersistTiles();
         }
 
-        private void MoveGroup(TileGroupView dragged, TileGroupView? target)
+        private void MoveGroupToIndex(TileGroupView? dragged, TileGroupView? targetGroup)
         {
-            if (dragged == null || dragged == target) return;
+            if (dragged == null) return;
+
             int oldIndex = TileGroups.IndexOf(dragged);
             if (oldIndex < 0) return;
 
-            int newIndex = target == null ? TileGroups.Count - 1 : TileGroups.IndexOf(target);
-            if (newIndex < 0) newIndex = TileGroups.Count - 1;
+            int targetIndex = targetGroup != null ? TileGroups.IndexOf(targetGroup) : TileGroups.Count - 1;
+            if (targetIndex < 0) targetIndex = TileGroups.Count - 1;
+            if (targetIndex >= TileGroups.Count) targetIndex = TileGroups.Count - 1;
 
-            TileGroups.Move(oldIndex, newIndex);
+            TileGroups.Move(oldIndex, targetIndex);
             NormalizeGroupOrder();
             PersistTiles();
         }
@@ -677,6 +761,234 @@ namespace WINHOME
             _resizingGroup = null;
             _isGroupDragBlockedByResize = false;
         }
+
+        #region Dock bar interactions
+
+        private void DockArea_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(AppInfo)))
+            {
+                e.Effects = DragDropEffects.Move;
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+            e.Handled = true;
+        }
+
+        private void DockArea_Drop(object sender, DragEventArgs e)
+        {
+            HandleDockDrop(e, targetBefore: null);
+        }
+
+        private void DockArea_DragLeave(object sender, DragEventArgs e)
+        {
+        }
+
+        private void DockItem_Drop(object sender, DragEventArgs e)
+        {
+            var target = (sender as FrameworkElement)?.DataContext as AppInfo;
+            HandleDockDrop(e, target, dropOnTile: true);
+        }
+
+        private void HandleDockDrop(DragEventArgs e, AppInfo? targetBefore, bool dropOnTile = false)
+        {
+            if (!e.Data.GetDataPresent(typeof(AppInfo))) return;
+            var dragged = e.Data.GetData(typeof(AppInfo)) as AppInfo;
+            if (dragged == null) return;
+
+            int insertIndex = QuickDockApps.Count;
+            var panel = GetItemsHost(DockItemsControl);
+            if (panel != null)
+            {
+                insertIndex = GetInsertIndex(panel, e.GetPosition(panel));
+            }
+
+            if (QuickDockApps.Contains(dragged))
+            {
+                if (dropOnTile && targetBefore != null)
+                {
+                    SwapDock(dragged, targetBefore);
+                }
+                else
+                {
+                    MoveDockApp(dragged, insertIndex);
+                }
+            }
+            else
+            {
+                // 规则2：跨容器，追加末尾
+                AddDockApp(dragged, insertIndex: null);
+                RemoveTile(dragged);
+            }
+
+            e.Handled = true;
+        }
+
+        private void DockItem_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is AppInfo app)
+            {
+                _selectedApp = app;
+                LaunchApp(app);
+            }
+        }
+
+        private void DockItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _dockDragStartPoint = e.GetPosition(null);
+            _draggingDockApp = (sender as FrameworkElement)?.DataContext as AppInfo;
+        }
+
+        private void DockItem_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _draggingDockApp == null) return;
+
+            var pos = e.GetPosition(null);
+            if (Math.Abs(pos.X - _dockDragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                Math.Abs(pos.Y - _dockDragStartPoint.Y) > SystemParameters.MinimumVerticalDragDistance)
+            {
+                try
+                {
+                    DragDrop.DoDragDrop((DependencyObject)sender, _draggingDockApp, DragDropEffects.Move);
+                    _draggingDockApp = null;
+                }
+                catch { }
+            }
+        }
+
+        private void DockItem_Open_Click(object sender, RoutedEventArgs e)
+        {
+            var app = (sender as FrameworkElement)?.DataContext as AppInfo;
+            if (app == null && sender is MenuItem mi && mi.DataContext is AppInfo ctx) app = ctx;
+            if (app == null) return;
+            LaunchApp(app);
+        }
+
+        private void DockItem_Remove_Click(object sender, RoutedEventArgs e)
+        {
+            var app = (sender as FrameworkElement)?.DataContext as AppInfo;
+            if (app == null && sender is MenuItem mi && mi.DataContext is AppInfo ctx) app = ctx;
+            if (app == null) return;
+            RemoveDockApp(app);
+        }
+
+        private void DockScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (sender is ScrollViewer sv)
+            {
+                sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta);
+                e.Handled = true;
+            }
+        }
+
+        private void AddDockApp(AppInfo source, int? insertIndex = null)
+        {
+            if (source == null || string.IsNullOrWhiteSpace(source.Path)) return;
+
+            var existing = QuickDockApps.FirstOrDefault(a => string.Equals(a.Path, source.Path, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                MoveDockApp(existing, insertIndex);
+                return;
+            }
+
+            var clone = new AppInfo
+            {
+                Name = string.IsNullOrWhiteSpace(source.Name) ? Path.GetFileNameWithoutExtension(source.Path) : source.Name,
+                Path = source.Path,
+                Group = "Dock",
+                Icon = source.Icon ?? StartMenuScanner.GetIconForPath(source.Path),
+                IsPinned = true
+            };
+
+            int idx = QuickDockApps.Count; // 默认末尾
+            if (insertIndex.HasValue && insertIndex.Value >= 0 && insertIndex.Value <= QuickDockApps.Count)
+                idx = insertIndex.Value;
+
+            QuickDockApps.Insert(idx, clone);
+            PersistTiles();
+        }
+
+        private void MoveDockApp(AppInfo app, int? insertIndex = null)
+        {
+            int oldIndex = QuickDockApps.IndexOf(app);
+            if (oldIndex < 0) return;
+
+            int newIndex;
+            if (insertIndex.HasValue)
+            {
+                newIndex = insertIndex.Value;
+            }
+            else
+            {
+                newIndex = QuickDockApps.Count - 1;
+            }
+
+            if (newIndex < 0) newIndex = 0;
+            if (newIndex >= QuickDockApps.Count) newIndex = QuickDockApps.Count - 1;
+            if (oldIndex == newIndex) return;
+
+            QuickDockApps.Move(oldIndex, newIndex);
+            PersistTiles();
+        }
+
+        private void SwapDock(AppInfo a, AppInfo b)
+        {
+            int i = QuickDockApps.IndexOf(a);
+            int j = QuickDockApps.IndexOf(b);
+            if (i < 0 || j < 0 || i == j) return;
+            QuickDockApps[i] = b;
+            QuickDockApps[j] = a;
+            PersistTiles();
+        }
+
+        private void RemoveDockApp(AppInfo app)
+        {
+            if (app == null) return;
+            if (QuickDockApps.Remove(app))
+            {
+                PersistTiles();
+            }
+        }
+
+        private ImageSource? TryFastIcon(string path)
+        {
+            if (IconMemoryCache.TryGet(path, out var icon)) return icon;
+            icon = StartMenuScanner.GetIconFromCacheOnly(path);
+            if (icon != null) IconMemoryCache.Store(path, icon);
+            return icon;
+        }
+
+        private void WarmPinnedIconsAsync()
+        {
+            try
+            {
+                var apps = TileGroups.SelectMany(g => g.Items).Concat(QuickDockApps).ToList();
+                IconMemoryCache.WarmIcons(apps, (app, icon) =>
+                {
+                    if (icon != null && app.Icon == null)
+                    {
+                        Dispatcher.InvokeAsync(() => app.Icon = icon, System.Windows.Threading.DispatcherPriority.Background);
+                    }
+                });
+            }
+            catch { }
+        }
+
+        public void BringToFront()
+        {
+            try
+            {
+                if (!IsVisible) Show();
+                ForceTopmost();
+                Activate();
+            }
+            catch { }
+        }
+
+        #endregion
 
         private void RemoveTile(AppInfo app)
         {
@@ -799,6 +1111,106 @@ namespace WINHOME
         private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
         #endregion
+
+        #region Topmost force helpers
+
+        private void ForceTopmost()
+        {
+            try
+            {
+                Topmost = false;
+                Topmost = true;
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
+                }
+            }
+            catch { }
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOREDRAW = 0x0008;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_NOOWNERZORDER = 0x0200;
+        private const uint SWP_NOSENDCHANGING = 0x0400;
+
+        #endregion
+
+        #region Drag helpers
+
+        private static int GetInsertIndex(Panel panel, Point pos)
+        {
+            int index = 0;
+            foreach (UIElement child in panel.Children)
+            {
+                if (child == null) { index++; continue; }
+                var fe = child as FrameworkElement;
+                if (fe == null) { index++; continue; }
+                var bounds = fe.TransformToAncestor(panel).TransformBounds(new Rect(new Point(0, 0), fe.RenderSize));
+                if (pos.Y < bounds.Top)
+                {
+                    return index;
+                }
+                if (pos.Y <= bounds.Bottom)
+                {
+                    if (pos.X < bounds.Left + bounds.Width / 2) return index;
+                    return index + 1;
+                }
+                index++;
+            }
+            return panel.Children.Count;
+        }
+
+        private Panel? GetItemsHost(ItemsControl? control)
+        {
+            if (control == null) return null;
+
+            control.ApplyTemplate();
+            ItemsPresenter? presenter = FindVisualChild<ItemsPresenter>(control);
+            if (presenter == null)
+            {
+                presenter = control.Template.FindName("ItemsHost", control) as ItemsPresenter;
+            }
+            if (presenter == null)
+            {
+                control.UpdateLayout();
+                presenter = FindVisualChild<ItemsPresenter>(control);
+            }
+            if (presenter != null)
+            {
+                presenter.ApplyTemplate();
+                if (VisualTreeHelper.GetChildrenCount(presenter) > 0)
+                {
+                    var panel = VisualTreeHelper.GetChild(presenter, 0) as Panel;
+                    if (panel != null) return panel;
+                }
+            }
+            return null;
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            int count = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T tChild) return tChild;
+                var result = FindVisualChild<T>(child);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        #endregion
     }
+
 }
 

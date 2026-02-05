@@ -55,9 +55,11 @@ namespace WINHOME
                     // ensure config window (if any) is closed and always show main window
                     try { _mainWindow.CloseConfigWindow(); } catch { }
                     _mainWindow.Show();
-                    _mainWindow.Activate();
-                    // always hide when window loses focus (deactivation) — deactivation should close the window
-                    _mainWindow.Deactivated += MainWindow_Deactivated;
+                    _mainWindow.BringToFront();
+                }
+                else
+                {
+                    _mainWindow.BringToFront();
                 }
             });
         }
@@ -65,27 +67,13 @@ namespace WINHOME
         private void HotkeyService_ComboReleased(object? sender, EventArgs e)
         {
             Logger.Log("ComboReleased event");
-            Dispatcher.Invoke(() =>
-            {
-                if (_mainWindow == null) return;
-                if (_mainWindow.IsVisible)
-                {
-                    // if pinned do not hide on release
-                    if (!_mainWindow.IsPinned)
-                    {
-                        _mainWindow.Deactivated -= MainWindow_Deactivated;
-                        _mainWindow.Hide();
-                    }
-                }
-            });
+            // 需求：松开快捷键不再关闭窗口
         }
 
         private void MainWindow_Deactivated(object? sender, EventArgs e)
         {
             Logger.Log("MainWindow Deactivated");
-            if (_mainWindow == null) return;
-            _mainWindow.Deactivated -= MainWindow_Deactivated;
-            _mainWindow.Hide();
+            // 需求：失去焦点不自动隐藏
         }
 
         protected override void OnExit(ExitEventArgs e)
