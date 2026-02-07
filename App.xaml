@@ -1,9 +1,106 @@
-﻿<Application x:Class="WINHOME.App"
+<Application x:Class="WINHOME.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:WINHOME"
-             ShutdownMode="OnExplicitShutdown">
+             xmlns:local="clr-namespace:WINHOME">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <!-- 通用卡片外壳样式（主界面磁贴） -->
+            <Style x:Key="TileShellStyle" TargetType="Border">
+                <Setter Property="Width" Value="100"/>
+                <Setter Property="Height" Value="100"/>
+                <Setter Property="CornerRadius" Value="0"/>
+                <Setter Property="Margin" Value="4"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Background" Value="#2B2E39"/>
+                <Setter Property="BorderBrush" Value="#3A3E4D"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Effect">
+                    <Setter.Value>
+                        <DropShadowEffect BlurRadius="8" Color="#66000000" ShadowDepth="2" Opacity="0.25"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
+                        <Setter Property="Background" Value="#1C1F2A"/>
+                        <Setter Property="BorderBrush" Value="#6CA0FF"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- 配置页磁贴外壳样式（允许变色提示） -->
+            <Style x:Key="ConfigTileShellStyle" TargetType="Border" BasedOn="{StaticResource TileShellStyle}">
+                <Setter Property="BorderBrush" Value="#3A3E4D"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                        <Setter Property="Background" Value="#35507A"/>
+                        <Setter Property="BorderBrush" Value="#6CA0FF"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- 图标 + 文本通用内容模板 -->
+            <DataTemplate x:Key="AppTileContent">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Image Grid.Row="0"
+                           Width="52"
+                           Height="52"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Stretch="Uniform"
+                           RenderTransformOrigin="0.5,0.5"
+                           Source="{Binding Icon}">
+                        <Image.RenderTransform>
+                            <ScaleTransform x:Name="imgScale" ScaleX="1" ScaleY="1"/>
+                        </Image.RenderTransform>
+                        <Image.Style>
+                            <Style TargetType="Image">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Border}, Path=IsMouseOver}" Value="True">
+                                        <Setter Property="RenderTransform">
+                                            <Setter.Value>
+                                                <ScaleTransform ScaleX="1.05" ScaleY="1.05"/>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Image.Style>
+                    </Image>
+
+                    <TextBlock Grid.Row="1"
+                               Text="{Binding Name}"
+                               FontSize="10"
+                               Foreground="#F0F2FF"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               LineHeight="12"
+                               MaxHeight="28"
+                               Margin="6,2,6,4"
+                               VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </DataTemplate>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -1,20 +1,15 @@
 <Window x:Class="WINHOME.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WINHOME"
-        mc:Ignorable="d"
         Title=""
-        Height="600" Width="960"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="True"
-        Topmost="True"
+        Topmost="False"
         Background="#161820">
 
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -43,468 +38,28 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#1A1C24" Offset="0"/>
-                <GradientStop Color="#0F1117" Offset="1"/>
-            </LinearGradientBrush>
-        </Grid.Background>
-
+    <Grid Background="#161820">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <StackPanel Orientation="Horizontal" Margin="18,14,18,10">
-                <TextBlock Text="WINHOME" FontSize="18" FontWeight="SemiBold" Foreground="#E6E8EF" />
-            </StackPanel>
-
-            <ScrollViewer Grid.Row="1"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Auto"
-                          Padding="6,0,6,6"
-                          Background="Transparent">
-
-                <Border Background="Transparent"
-                        PreviewMouseRightButtonDown="Root_RightButtonDown">
-                    <Border.ContextMenu>
-                        <ContextMenu x:Name="RootContextMenu" Opened="RootContextMenu_Opened">
-                            <MenuItem Header="新建分类" Click="AddGroup_Click"/>
-                            <MenuItem Header="删除选中分类" Click="DeleteSelectedGroup_Click" x:Name="CtxDeleteGroup"/>
-                            <MenuItem Header="取消固定选中软件" Click="UnpinSelectedApp_Click" x:Name="CtxUnpinApp"/>
-                        </ContextMenu>
-                    </Border.ContextMenu>
-
-                    <ItemsControl x:Name="PinnedGroupsControl"
-                                  ItemsSource="{Binding TileGroups}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" IsItemsHost="True" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="6"
-                                    Padding="3"
-                                    CornerRadius="12"
-                                    Width="{Binding GroupWidth, Mode=OneWay}"
-                                    AllowDrop="True"
-                                    DragOver="Group_DragOver"
-                                    Drop="Group_Drop"
-                                    Tag="{Binding Name}"
-                                    PreviewMouseLeftButtonDown="Group_PreviewMouseLeftButtonDown"
-                                    PreviewMouseRightButtonDown="Group_PreviewMouseRightButtonDown"
-                                    PreviewMouseMove="Group_PreviewMouseMove">
-
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#1F2330"/>
-                                        <Setter Property="BorderBrush" Value="#2E3342"/>
-                                        <Setter Property="BorderThickness" Value="1"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                <Setter Property="Background" Value="#181B24"/>
-                                                <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                <Setter Property="BorderThickness" Value="1.5"/>
-                                                <Setter Property="Opacity" Value="0.7"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-
-                                <Border.ContextMenu>
-                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Header="删除分类" Click="Group_Delete_Click" />
-                                    </ContextMenu>
-                                </Border.ContextMenu>
-
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="*"/>
-                                    </Grid.RowDefinitions>
-
-                                    <StackPanel Grid.Row="0">
-                                        <DockPanel Margin="13,5,0,0">
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontSize="13"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="#E9EBF5"
-                                                       DockPanel.Dock="Left"
-                                                       MouseLeftButtonDown="GroupName_MouseLeftButtonDown"/>
-                                                <!--<Border Width="22" Height="4" CornerRadius="2" Background="#38435A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"/>-->
-                                            </DockPanel>
-                                        <TextBlock Text="释放到此"
-                                                   FontSize="12"
-                                                   Foreground="#6CA0FF"
-                                                   Margin="13,0,0,4"
-                                                   Visibility="Collapsed">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </StackPanel>
-
-                                    <ItemsControl Grid.Row="1"
-                                                  ItemsSource="{Binding Items}"
-                                                  AllowDrop="True"
-                                                  DragOver="Group_DragOver"
-                                                  DragLeave="Group_DragLeave"
-                                                  Drop="Group_Drop"
-                                                  Tag="{Binding Name}"
-                                                  HorizontalAlignment="Center">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel IsItemsHost="True"
-                                                           ItemWidth="118"
-                                                           ItemHeight="140"
-                                                           HorizontalAlignment="Center" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                            <Border Width="80"
-                                                    Height="100"
-                                                    Margin="3"
-                                                    Padding="0"
-                                                    CornerRadius="10"
-                                                    Background="#2B2E39"
-                                                    BorderBrush="#3A3E4D"
-                                                    BorderThickness="1"
-                                                    MouseLeftButtonUp="Tile_MouseLeftButtonUp"
-                                                    PreviewMouseRightButtonDown="Tile_RightButtonDown"
-                                                    PreviewMouseLeftButtonDown="Tile_PreviewMouseLeftButtonDown"
-                                                    PreviewMouseMove="Tile_PreviewMouseMove"
-                                                    AllowDrop="True"
-                                                    Drop="Tile_Drop"
-                                                    Tag="{Binding}">
-
-                                                <Border.ContextMenu>
-                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                                        <MenuItem Header="打开" Click="Tile_Open_Click" />
-                                                        <Separator />
-                                                        <MenuItem Header="从主界面移除" Click="Tile_Remove_Click" />
-                                                        <MenuItem Header="打开文件位置" Click="Tile_OpenFolder_Click" />
-                                                    </ContextMenu>
-                                                </Border.ContextMenu>
-
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#2B2E39"/>
-                                                        <Setter Property="BorderBrush" Value="#3A3E4D"/>
-                                                        <Setter Property="Effect">
-                                                            <Setter.Value>
-                                                                <DropShadowEffect BlurRadius="8" Color="#66000000" ShadowDepth="2" Opacity="0.25"/>
-                                                            </Setter.Value>
-                                                        </Setter>
-                                                        <Style.Triggers>
-                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                            </Trigger>
-                                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                                <Setter Property="Background" Value="#1C1F2A"/>
-                                                                <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                                <Setter Property="BorderThickness" Value="1.5"/>
-                                                                <Setter Property="Effect">
-                                                                    <Setter.Value>
-                                                                        <DropShadowEffect BlurRadius="4" Color="#33000000" ShadowDepth="0" Opacity="0.4"/>
-                                                                    </Setter.Value>
-                                                                </Setter>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-
-                                                        <Grid>
-                                                            <Grid.RowDefinitions>
-                                                                <RowDefinition Height="Auto"/>
-                                                                <RowDefinition Height="*"/>
-                                                            </Grid.RowDefinitions>
-
-                                                            <Image Source="{Binding Icon}"
-                                                           Width="65"
-                                                           Height="65"
-                                                           Margin="21,21,21,5"
-                                                           HorizontalAlignment="Center"
-                                                           Stretch="UniformToFill">
-                                                                <Image.Style>
-                                                                    <Style TargetType="Image">
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </Image.Style>
-                                                            </Image>
-
-                                                            <TextBlock Grid.Row="2"
-                                                            Text="{Binding Name}"
-                                                            TextAlignment="Center"
-                                                            FontSize="12"
-                                                            Foreground="#F0F2FF"
-                                                            TextWrapping="Wrap"
-                                                            LineHeight="18"
-                                                            TextTrimming="None"
-                                                            MaxHeight="36"
-                                                            Margin="5,0,5,5"
-                                                            VerticalAlignment="Top">
-                                                                <TextBlock.Style>
-                                                                    <Style TargetType="TextBlock">
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </TextBlock.Style>
-                                                            </TextBlock>
-                                                            <TextBlock Grid.Row="0"
-                                                                       Text="释放到此"
-                                                                       FontSize="12"
-                                                                       Foreground="#6CA0FF"
-                                                                       HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       Visibility="Collapsed">
-                                                                <TextBlock.Style>
-                                                                    <Style TargetType="TextBlock">
-                                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                                                <Setter Property="Visibility" Value="Visible"/>
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </TextBlock.Style>
-                                                            </TextBlock>
-                                                        </Grid>
-                                                    </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-
-                                        <ItemsControl.Style>
-                                            <Style TargetType="ItemsControl">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Items.Count}" Value="0">
-                                                        <Setter Property="Template">
-                                                            <Setter.Value>
-                                                                <ControlTemplate>
-                                                                    <Border BorderBrush="#3A3E4D" BorderThickness="1" CornerRadius="10" Padding="12" MinHeight="140" Background="#252836" AllowDrop="True">
-                                                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                                                <TextBlock Text="拖拽应用到此处" Foreground="#6F7485" FontSize="12" HorizontalAlignment="Center"/>
-                                                                            </StackPanel>
-                                                                    </Border>
-                                                                </ControlTemplate>
-                                                            </Setter.Value>
-                                                        </Setter>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </ItemsControl.Style>
-                                    </ItemsControl>
-
-                                    <Thumb Grid.Row="1"
-                                           HorizontalAlignment="Right"
-                                           VerticalAlignment="Bottom"
-                                           Width="16"
-                                           Height="16"
-                                           Cursor="SizeWE"
-                                           DragStarted="Group_Resize_Started"
-                                           DragDelta="Group_Resize_Delta"
-                                           DragCompleted="Group_Resize_Completed">
-                                        <Thumb.Template>
-                                            <ControlTemplate TargetType="Thumb">
-                                                <Border Background="#2E3342" CornerRadius="3" Opacity="0.7">
-                                                    <Path Data="M0,6 L6,6 M6,0 L6,6" Stroke="#9FB3FF" StrokeThickness="1.5" Stretch="None" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                            </ControlTemplate>
-                                        </Thumb.Template>
-                                    </Thumb>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                </Border>
-            </ScrollViewer>
-        </Grid>
-
         <Border Grid.Row="1"
-                Background="#10121A"
-                BorderBrush="#1E2230"
-                BorderThickness="0,1,0,0"
-                Padding="14,10"
-                MinHeight="72">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <!-- Dock-like quick bar -->
-                <Grid Grid.Column="0" VerticalAlignment="Center">
-                    <ScrollViewer x:Name="DockScrollViewer"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Disabled"
-                                  PanningMode="HorizontalOnly"
-                                  AllowDrop="True"
-                                  DragOver="DockArea_DragOver"
-                                  DragLeave="DockArea_DragLeave"
-                                  Drop="DockArea_Drop"
-                                  PreviewMouseWheel="DockScrollViewer_PreviewMouseWheel">
-                        <ItemsControl x:Name="DockItemsControl"
-                                      ItemsSource="{Binding QuickDockApps}"
-                                      HorizontalAlignment="Left"
-                                      AllowDrop="True"
-                                      DragOver="DockArea_DragOver">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Width="60"
-                                            Height="60"
-                                            Margin="4,0,4,0"
-                                            Padding="8"
-                                            CornerRadius="12"
-                                            MouseLeftButtonUp="DockItem_MouseLeftButtonUp"
-                                            PreviewMouseLeftButtonDown="DockItem_PreviewMouseLeftButtonDown"
-                                            PreviewMouseMove="DockItem_PreviewMouseMove"
-                                            AllowDrop="True"
-                                            Drop="DockItem_Drop">
-
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="#1B1E27"/>
-                                                <Setter Property="BorderBrush" Value="#262C3A"/>
-                                                <Setter Property="BorderThickness" Value="1"/>
-                                                <Setter Property="Effect">
-                                                    <Setter.Value>
-                                                        <DropShadowEffect BlurRadius="6" Color="#33000000" ShadowDepth="1" Opacity="0.25"/>
-                                                    </Setter.Value>
-                                                </Setter>
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#242837"/>
-                                                        <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                    </Trigger>
-                                                    <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                        <Setter Property="Background" Value="#0F1117"/>
-                                                        <Setter Property="BorderBrush" Value="#6CA0FF"/>
-                                                        <Setter Property="BorderThickness" Value="1.5"/>
-                                                        <Setter Property="Effect">
-                                                            <Setter.Value>
-                                                                <DropShadowEffect BlurRadius="4" Color="#33000000" ShadowDepth="0" Opacity="0.35"/>
-                                                            </Setter.Value>
-                                                        </Setter>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-
-                                        <Border.ContextMenu>
-                                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                                <MenuItem Header="打开" Click="DockItem_Open_Click" />
-                                                <MenuItem Header="从底部栏移除" Click="DockItem_Remove_Click" />
-                                            </ContextMenu>
-                                        </Border.ContextMenu>
-
-                                        <Border.ToolTip>
-                                            <ToolTip Placement="Mouse"
-                                                     Background="#2B2E39"
-                                                     Foreground="#FFFFFF"
-                                                     Padding="8"
-                                                     MaxWidth="360">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" FontSize="12" TextWrapping="Wrap"/>
-                                                    <TextBlock Text="{Binding Path}" FontSize="10" Foreground="#9EA4B8" TextWrapping="Wrap"/>
-                                                </StackPanel>
-                                            </ToolTip>
-                                        </Border.ToolTip>
-
-                                        <Grid>
-                                            <Image Source="{Binding Icon}"
-                                                   Width="36"
-                                                   Height="36"
-                                                   Stretch="Uniform"
-                                                   Visibility="Visible">
-                                                <Image.Style>
-                                                    <Style TargetType="Image">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Image.Style>
-                                            </Image>
-                                            <TextBlock Text="释放到此"
-                                                       Foreground="#6CA0FF"
-                                                       FontSize="11"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       Visibility="Collapsed">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                                <Setter Property="Visibility" Value="Visible"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-
-                    <TextBlock Text="拖拽应用到此处固定"
-                               Foreground="#5E6478"
-                               FontSize="12"
-                               Margin="4,0,0,0"
-                               VerticalAlignment="Center"
-                               IsHitTestVisible="False">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ElementName=DockItemsControl, Path=Items.Count}" Value="0">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </Grid>
-
-                <!-- Action buttons on the right -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                HorizontalAlignment="Right"
+                Margin="0,0,12,10"
+                Padding="12,8,12,8"
+                CornerRadius="12"
+                Background="#2A2E39"
+                BorderBrush="#3D4252"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="WINHOOME"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="#E6E8EF"
+                           HorizontalAlignment="Right"
+                           Margin="0,0,2,6"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="PinButton" Style="{StaticResource IconButtonStyle}" Click="PinButton_Click" ToolTip="固定：松开快捷键时不隐藏">
                         <Grid>
                             <Ellipse Fill="Transparent" x:Name="PinBg" />
@@ -515,7 +70,7 @@
                         <TextBlock FontSize="18" Foreground="#FFFFFF">⚙</TextBlock>
                     </Button>
                 </StackPanel>
-            </Grid>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

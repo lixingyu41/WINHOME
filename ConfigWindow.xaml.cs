@@ -10,32 +10,49 @@ using System.Windows.Threading;
 using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Text;
+using System.Runtime.InteropServices;
+using System.Windows.Media;
 
 namespace WINHOME
 {
     public partial class ConfigWindow : Window
     {
         private DispatcherTimer? _bubbleTimer;
+        private MainWindow? _ownerMainWindow;
+        private bool _closingByCommand;
+        private LauncherWindowMode _windowMode = LauncherWindowMode.Formal;
+        public event EventHandler? ClosingByFocusLoss;
+        public event EventHandler? AppLaunched;
 
         public ConfigWindow()
         {
             InitializeComponent();
             Deactivated += ConfigWindow_Deactivated;
+            KeyDown += ConfigWindow_KeyDown;
 
             Loaded += ConfigWindow_Loaded;
             PinConfigManager.ConfigChanged += PinConfigManager_ConfigChanged;
             Closed += (s, e) => PinConfigManager.ConfigChanged -= PinConfigManager_ConfigChanged;
         }
 
+        internal void SetMainWindowContext(MainWindow mainWindow, LauncherWindowMode windowMode)
+        {
+            if (_ownerMainWindow != null)
+            {
+                _ownerMainWindow.PinStateChanged -= OwnerMainWindow_PinStateChanged;
+            }
+
+            _ownerMainWindow = mainWindow;
+            _windowMode = windowMode;
+            _ownerMainWindow.PinStateChanged += OwnerMainWindow_PinStateChanged;
+        }
+
         private void ConfigWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            SyncPinVisual();
+
             // cancel any scheduled cache clear because user opened config
             StartMenuScanner.CancelScheduledClear();
-
-            // load window size ratios
-            var ratios = PinConfigManager.GetWindowRatios();
-            WidthPercentBox.Text = Math.Round(ratios.widthRatio * 100).ToString("0");
-            HeightPercentBox.Text = Math.Round(ratios.heightRatio * 100).ToString("0");
 
             // load programs: try cached first, then background load
             var cached = StartMenuScanner.GetCachedApps();
@@ -202,14 +219,73 @@ namespace WINHOME
 
         private void ConfigWindow_Deactivated(object? sender, EventArgs e)
         {
-            try { this.Close(); } catch { }
+            if (_closingByCommand) return;
+            if (_windowMode == LauncherWindowMode.Formal) return;
+
+            try
+            {
+                ClosingByFocusLoss?.Invoke(this, EventArgs.Empty);
+                Close();
+            }
+            catch { }
+        }
+
+        private void ConfigWindow_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape || IsWinAltPressed()) return;
+
+            e.Handled = true;
+            _closingByCommand = true;
+            Close();
         }
 
         protected override void OnClosed(EventArgs e)
         {
+            if (_ownerMainWindow != null)
+            {
+                _ownerMainWindow.PinStateChanged -= OwnerMainWindow_PinStateChanged;
+                _ownerMainWindow = null;
+            }
+
             base.OnClosed(e);
             // schedule memory cleanup after 5s if not reopened
             StartMenuScanner.ScheduleClearCache(TimeSpan.FromSeconds(5));
+        }
+
+        private void ConfigPinButton_Click(object sender, RoutedEventArgs e)
+        {
+            _ownerMainWindow?.TogglePinState();
+            SyncPinVisual();
+        }
+
+        private void BackToMainButton_Click(object sender, RoutedEventArgs e)
+        {
+            var ownerMainWindow = _ownerMainWindow;
+
+            _closingByCommand = true;
+            Close();
+
+            if (ownerMainWindow != null)
+            {
+                ownerMainWindow.ShowLauncher();
+                ownerMainWindow.FocusLauncher();
+                return;
+            }
+        }
+
+        private void OwnerMainWindow_PinStateChanged(object? sender, EventArgs e)
+        {
+            Dispatcher.Invoke(SyncPinVisual);
+        }
+
+        private void SyncPinVisual()
+        {
+            if (ConfigPinBg == null) return;
+
+            bool pinned = _ownerMainWindow?.IsPinned == true;
+            ConfigPinBg.Fill = pinned
+                ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7F9CF5"))
+                : Brushes.Transparent;
         }
 
         private void AppTile_MouseLeftButtonUp(object? sender, MouseButtonEventArgs e)
@@ -249,10 +325,7 @@ namespace WINHOME
                     UseShellExecute = true,
                 };
                 Process.Start(psi);
-
-                // close config and owner windows after launching
-                try { this.Close(); } catch { }
-                try { if (this.Owner is MainWindow mw) mw.Hide(); } catch { }
+                AppLaunched?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
@@ -344,38 +417,6 @@ namespace WINHOME
             catch { }
         }
 
-        private void ApplySizeButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                double wp = ParsePercent(WidthPercentBox.Text, 60);
-                double hp = ParsePercent(HeightPercentBox.Text, 50);
-                PinConfigManager.UpdateWindowRatios(wp / 100.0, hp / 100.0);
-
-                if (Owner is MainWindow mw)
-                {
-                    mw.ApplyRatios(wp / 100.0, hp / 100.0);
-                    // keep config same size as main
-                    this.Width = mw.Width;
-                    this.Height = mw.Height;
-                    this.Left = mw.Left;
-                    this.Top = mw.Top;
-                }
-            }
-            catch { }
-        }
-
-        private double ParsePercent(string? text, double fallback)
-        {
-            if (double.TryParse(text, out var val))
-            {
-                if (val < 30) val = 30;
-                if (val > 90) val = 90;
-                return val;
-            }
-            return fallback;
-        }
-
         private static char GetGroupKey(string? name)
         {
             if (string.IsNullOrWhiteSpace(name)) return '#';
@@ -436,6 +477,24 @@ namespace WINHOME
             try { Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); } catch { }
             return Encoding.GetEncoding("GB2312"); // 按照 GB2312 对应首字母表
         });
+
+        private const int VK_MENU = 0x12;
+        private const int VK_LMENU = 0xA4;
+        private const int VK_RMENU = 0xA5;
+        private const int VK_LWIN = 0x5B;
+        private const int VK_RWIN = 0x5C;
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        private static bool IsWinAltPressed()
+        {
+            bool winDown = (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+            bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0
+                           || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0
+                           || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
+            return winDown && altDown;
+        }
 
 
         private static T? FindAncestor<T>(DependencyObject? child) where T : DependencyObject

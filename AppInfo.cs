@@ -15,6 +15,7 @@ namespace WINHOME
         private string _group = "常用";
         private bool _isPinned;
         private bool _isPlaceholder;
+        private int _order;
 
         public string Name
         {
@@ -59,6 +60,15 @@ namespace WINHOME
         {
             get => _isPlaceholder;
             set { if (_isPlaceholder != value) { _isPlaceholder = value; OnPropertyChanged(); } }
+        }
+
+        /// <summary>
+        /// 分类内的顺序（1 开始）。
+        /// </summary>
+        public int Order
+        {
+            get => _order;
+            set { if (_order != value) { _order = value; OnPropertyChanged(); } }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
