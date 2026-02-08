@@ -5,23 +5,33 @@ namespace WINHOME
     internal sealed class LauncherWindowController
     {
         private readonly MainWindow _mainWindow;
-        private readonly LauncherWindowMode _mode;
         private bool _comboPressed;
 
-        public LauncherWindowController(MainWindow mainWindow, LauncherWindowMode mode)
+        public LauncherWindowController(MainWindow mainWindow)
         {
             _mainWindow = mainWindow;
-            _mode = mode;
 
             _mainWindow.PinStateChanged += OnPinStateChanged;
             _mainWindow.ConfigWindowStateChanged += OnConfigWindowStateChanged;
             _mainWindow.AppInvoked += OnAppInvoked;
-            _mainWindow.Deactivated += (_, _) => ApplyPresentationState();
+            _mainWindow.Deactivated += OnMainWindowDeactivated;
         }
 
         public void HandleComboPressed()
         {
             _comboPressed = true;
+
+            if (_mainWindow.IsConfigWindowOpen && !_mainWindow.IsPinned)
+            {
+                _mainWindow.CloseConfigWindow();
+            }
+
+            // 像开始菜单：未固定时，再次按快捷键可关闭主窗口。
+            if (!_mainWindow.IsPinned && _mainWindow.IsVisible)
+            {
+                _mainWindow.HideLauncher();
+                return;
+            }
 
             _mainWindow.ShowLauncher();
             _mainWindow.FocusLauncher();
@@ -31,13 +41,6 @@ namespace WINHOME
         public void HandleComboReleased()
         {
             _comboPressed = false;
-
-            if (ShouldHideOnComboRelease())
-            {
-                _mainWindow.HideLauncher();
-                return;
-            }
-
             ApplyPresentationState();
         }
 
@@ -45,6 +48,10 @@ namespace WINHOME
         {
             if (ShouldHideOnAppInvoked(e))
             {
+                if (e.Source == AppInvokeSource.ConfigWindow)
+                {
+                    _mainWindow.CloseConfigWindow();
+                }
                 _mainWindow.HideLauncher();
                 return;
             }
@@ -54,12 +61,6 @@ namespace WINHOME
 
         private void OnPinStateChanged(object? sender, EventArgs e)
         {
-            if (!_mainWindow.IsPinned && !_comboPressed)
-            {
-                _mainWindow.HideLauncher();
-                return;
-            }
-
             ApplyPresentationState();
         }
 
@@ -68,21 +69,23 @@ namespace WINHOME
             ApplyPresentationState();
         }
 
-        private bool ShouldHideOnComboRelease()
-        {
-            if (_mainWindow.IsPinned) return false;
-            return _mode == LauncherWindowMode.Formal;
-        }
-
         private bool ShouldHideOnAppInvoked(AppInvokedEventArgs e)
         {
             if (_mainWindow.IsPinned) return false;
-            if (_mode == LauncherWindowMode.Test) return false;
-
-            // 配置页行为：松键/点应用都不直接关闭，只在失焦后关闭。
-            if (e.Source == AppInvokeSource.ConfigWindow) return false;
 
             return true;
+        }
+
+        private void OnMainWindowDeactivated(object? sender, EventArgs e)
+        {
+            // 未固定时主窗口失焦即关闭；固定后只允许 ESC 关闭。
+            if (!_mainWindow.IsPinned && _mainWindow.IsVisible && !_mainWindow.IsConfigWindowOpen)
+            {
+                _mainWindow.HideLauncher();
+                return;
+            }
+
+            ApplyPresentationState();
         }
 
         private void ApplyPresentationState()

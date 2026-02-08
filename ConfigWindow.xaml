@@ -94,7 +94,7 @@
             x:Name="GroupsScrollViewer"
             VerticalScrollBarVisibility="Auto"
             HorizontalScrollBarVisibility="Disabled"
-            Padding="12,8,12,12">
+            Padding="8,8,8,8">
 
             <ItemsControl x:Name="GroupsControl">
 
@@ -109,7 +109,7 @@
                                 FontSize="14"
                                 FontWeight="SemiBold"
                                 Foreground="#EAEAEA"
-                                Margin="12,12,12,6"/>
+                                Margin="2,2,2,2"/>
 
                             <!-- Tiles -->
                             <ItemsControl ItemsSource="{Binding Items}">
@@ -118,8 +118,8 @@
                                         <!-- MUST match tile size -->
                                         <WrapPanel
                                             Orientation="Horizontal"
-                                            ItemWidth="100"
-                                            ItemHeight="100"
+                                            ItemWidth="150"
+                                            ItemHeight="150"
                                             HorizontalAlignment="Left"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>

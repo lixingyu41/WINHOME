@@ -23,7 +23,7 @@ namespace WINHOME
                 Task.Run(StartMenuScanner.PreloadAsync);
                 Task.Run(PinConfigManager.Load);
 
-                _windowController = new LauncherWindowController(_mainWindow, De.WindowMode);
+                _windowController = new LauncherWindowController(_mainWindow);
 
                 _hotkeyService = new HotkeyService();
                 _hotkeyService.ComboPressed += HotkeyService_ComboPressed;

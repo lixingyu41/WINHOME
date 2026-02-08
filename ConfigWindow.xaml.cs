@@ -20,8 +20,6 @@ namespace WINHOME
         private DispatcherTimer? _bubbleTimer;
         private MainWindow? _ownerMainWindow;
         private bool _closingByCommand;
-        private LauncherWindowMode _windowMode = LauncherWindowMode.Formal;
-        public event EventHandler? ClosingByFocusLoss;
         public event EventHandler? AppLaunched;
 
         public ConfigWindow()
@@ -35,7 +33,7 @@ namespace WINHOME
             Closed += (s, e) => PinConfigManager.ConfigChanged -= PinConfigManager_ConfigChanged;
         }
 
-        internal void SetMainWindowContext(MainWindow mainWindow, LauncherWindowMode windowMode)
+        internal void SetMainWindowContext(MainWindow mainWindow)
         {
             if (_ownerMainWindow != null)
             {
@@ -43,7 +41,6 @@ namespace WINHOME
             }
 
             _ownerMainWindow = mainWindow;
-            _windowMode = windowMode;
             _ownerMainWindow.PinStateChanged += OwnerMainWindow_PinStateChanged;
         }
 
@@ -220,11 +217,10 @@ namespace WINHOME
         private void ConfigWindow_Deactivated(object? sender, EventArgs e)
         {
             if (_closingByCommand) return;
-            if (_windowMode == LauncherWindowMode.Formal) return;
+            if (_ownerMainWindow?.IsPinned == true) return;
 
             try
             {
-                ClosingByFocusLoss?.Invoke(this, EventArgs.Empty);
                 Close();
             }
             catch { }

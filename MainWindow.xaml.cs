@@ -1,9 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace WINHOME
 {
@@ -11,6 +16,7 @@ namespace WINHOME
     {
         private ConfigWindow? _configWindow;
         private bool _pinned;
+        public ObservableCollection<AppInfo> MainApps { get; } = new();
 
         public MainWindow()
         {
@@ -38,6 +44,10 @@ namespace WINHOME
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             MoveToCurrentMonitorFullScreen();
+            LoadMainApps();
+
+            PinConfigManager.ConfigChanged -= PinConfigManager_ConfigChanged;
+            PinConfigManager.ConfigChanged += PinConfigManager_ConfigChanged;
         }
 
         private void MainWindow_KeyDown(object sender, KeyEventArgs e)
@@ -79,6 +89,34 @@ namespace WINHOME
         public void NotifyMainAppInvoked()
         {
             AppInvoked?.Invoke(this, new AppInvokedEventArgs(AppInvokeSource.MainWindow));
+        }
+
+        private void MainAppTile_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement element) return;
+            if (element.DataContext is not AppInfo appInfo) return;
+
+            LaunchMainApp(appInfo);
+        }
+
+        private void LaunchMainApp(AppInfo appInfo)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(appInfo.Path)) return;
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = appInfo.Path,
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
+                NotifyMainAppInvoked();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("无法启动应用: " + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void PinButton_Click(object sender, RoutedEventArgs e)
@@ -134,7 +172,6 @@ namespace WINHOME
                 return;
             }
 
-            bool closedByFocusLoss = false;
             var configWindow = new ConfigWindow
             {
                 Width = Width,
@@ -143,14 +180,13 @@ namespace WINHOME
                 Top = Top,
                 Background = new BrushConverter().ConvertFromString("#3F3F3F") as Brush ?? Brushes.Gray
             };
-            configWindow.SetMainWindowContext(this, De.WindowMode);
+            configWindow.SetMainWindowContext(this);
 
-            configWindow.ClosingByFocusLoss += (_, _) => closedByFocusLoss = true;
             configWindow.AppLaunched += (_, _) => AppInvoked?.Invoke(this, new AppInvokedEventArgs(AppInvokeSource.ConfigWindow));
             configWindow.Closed += (_, _) =>
             {
                 _configWindow = null;
-                ConfigWindowStateChanged?.Invoke(this, new ConfigWindowStateChangedEventArgs(false, closedByFocusLoss));
+                ConfigWindowStateChanged?.Invoke(this, new ConfigWindowStateChangedEventArgs(false, false));
             };
 
             _configWindow = configWindow;
@@ -173,6 +209,53 @@ namespace WINHOME
             {
                 _configWindow = null;
             }
+        }
+
+        private void PinConfigManager_ConfigChanged(object? sender, EventArgs e)
+        {
+            try
+            {
+                Dispatcher.Invoke(LoadMainApps);
+            }
+            catch { }
+        }
+
+        private void LoadMainApps()
+        {
+            try
+            {
+                var cfg = PinConfigManager.Load();
+                var pinnedApps = cfg.Groups
+                    .OrderBy(g => g.Order)
+                    .SelectMany(g => g.Apps.OrderBy(a => a.Order))
+                    .Where(a => !string.IsNullOrWhiteSpace(a.Path))
+                    .GroupBy(a => a.Path, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+
+                MainApps.Clear();
+                foreach (var pinned in pinnedApps)
+                {
+                    MainApps.Add(new AppInfo
+                    {
+                        Name = pinned.Name,
+                        Path = pinned.Path,
+                        Group = pinned.Group,
+                        Order = pinned.Order,
+                        Icon = StartMenuScanner.GetIconFromCacheOnly(pinned.Path)
+                    });
+                }
+
+                var snapshot = MainApps.ToList();
+                IconMemoryCache.WarmIcons(snapshot, (app, icon) =>
+                {
+                    if (icon != null && app.Icon == null)
+                    {
+                        Dispatcher.InvokeAsync(() => app.Icon = icon, DispatcherPriority.Background);
+                    }
+                });
+            }
+            catch { }
         }
 
         private void MoveToCurrentMonitorFullScreen()
