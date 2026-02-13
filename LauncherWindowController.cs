@@ -27,7 +27,7 @@ namespace WINHOME
             }
 
             // 像开始菜单：未固定时，再次按快捷键可关闭主窗口。
-            if (!_mainWindow.IsPinned && _mainWindow.IsVisible)
+            if (!_mainWindow.IsPinned && _mainWindow.IsLauncherPresented)
             {
                 _mainWindow.HideLauncher();
                 return;
@@ -79,7 +79,7 @@ namespace WINHOME
         private void OnMainWindowDeactivated(object? sender, EventArgs e)
         {
             // 未固定时主窗口失焦即关闭；固定后只允许 ESC 关闭。
-            if (!_mainWindow.IsPinned && _mainWindow.IsVisible && !_mainWindow.IsConfigWindowOpen)
+            if (!_mainWindow.IsPinned && _mainWindow.IsLauncherPresented && !_mainWindow.IsConfigWindowOpen)
             {
                 _mainWindow.HideLauncher();
                 return;

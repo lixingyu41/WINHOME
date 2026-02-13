@@ -86,20 +86,80 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="MainLabelResizeThumbStyle" TargetType="Thumb">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
+        <Geometry x:Key="IconMinusGeometry">M2,8 L14,8</Geometry>
+        <Geometry x:Key="IconPlusGeometry">M2,8 L14,8 M8,2 L8,14</Geometry>
+
+        <Style x:Key="DockBarStyle" TargetType="Border">
+            <Setter Property="Padding" Value="12,8,12,8"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Background" Value="#D92A2E39"/>
+            <Setter Property="BorderBrush" Value="#8593A8"/>
+            <Setter Property="BorderThickness" Value="1.2"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="12"
+                                      ShadowDepth="0"
+                                      Opacity="0.38"
+                                      Color="#000000"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="MainDockAppButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="80" />
+            <Setter Property="Height" Value="80" />
+            <Setter Property="Margin" Value="0,0,30,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="0">
+                            <Image Width="65"
+                                   Height="65"
+                                   Stretch="Uniform"
+                                   Source="{Binding Icon}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#452C3A50" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
-    <Grid Background="#161820">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-
-        <Grid Grid.Row="0">
+    <Grid x:Name="MainRoot"
+          Background="#161820"
+          ClipToBounds="True">
+        <Grid>
             <Grid.Background>
-                <DrawingBrush TileMode="Tile"
+                <DrawingBrush x:Name="MainGridBrush"
+                              TileMode="Tile"
+                              ViewboxUnits="Absolute"
+                              Viewbox="0,0,110,110"
                               ViewportUnits="Absolute"
                               Viewport="0,0,110,110"
-                              Stretch="None">
+                              Stretch="Fill">
                     <DrawingBrush.Drawing>
                         <GeometryDrawing Brush="Transparent">
                             <GeometryDrawing.Pen>
@@ -115,19 +175,134 @@
                     </DrawingBrush.Drawing>
                 </DrawingBrush>
             </Grid.Background>
+        </Grid>
 
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Padding="0">
-                <ItemsControl ItemsSource="{Binding MainApps, RelativeSource={RelativeSource AncestorType=Window}}">
+        <Grid x:Name="MainContentHost"
+              Background="Transparent"
+              PreviewMouseRightButtonDown="MainContentHost_PreviewMouseRightButtonDown"
+              ContextMenuOpening="MainContentHost_ContextMenuOpening">
+            <Grid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="添加标签" Click="AddLabelMenuItem_Click"/>
+                </ContextMenu>
+            </Grid.ContextMenu>
+
+            <Grid x:Name="MainScaledLayer" RenderTransformOrigin="0,0">
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="MainScaleTransform" ScaleX="1" ScaleY="1"/>
+                </Grid.RenderTransform>
+
+                <ItemsControl x:Name="MainLabelsControl"
+                              ItemsSource="{Binding MainLabels, RelativeSource={RelativeSource AncestorType=Window}}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" ItemWidth="120" ItemHeight="120"/>
+                            <Canvas />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left" Value="{Binding X}" />
+                            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Width="120" Height="120">
+                            <Border Width="{Binding PixelWidth}"
+                                    Height="{Binding PixelHeight}"
+                                    Background="#243242"
+                                    BorderBrush="#6E90B6"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    PreviewMouseLeftButtonDown="LabelBorder_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="LabelBorder_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="LabelBorder_PreviewMouseLeftButtonUp">
+                                <Border.ContextMenu>
+                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                        <MenuItem Header="编辑内容" Click="EditLabelMenuItem_Click"/>
+                                        <MenuItem Header="移除标签" Click="RemoveLabelMenuItem_Click"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid>
+                                    <TextBlock Text="{Binding Text}"
+                                               Foreground="#F0F3F8"
+                                               FontSize="{Binding LabelFontSize}"
+                                               TextWrapping="Wrap"
+                                               TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="6,4,6,4">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Foreground="#F0F3F8"
+                                             FontSize="{Binding LabelFontSize}"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="False"
+                                             Padding="6,4,6,4"
+                                             TextAlignment="Center"
+                                             HorizontalContentAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             KeyDown="LabelTextBox_KeyDown"
+                                             LostFocus="LabelTextBox_LostFocus">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+
+                                    <Thumb Width="8"
+                                           HorizontalAlignment="Right"
+                                           Cursor="SizeWE"
+                                           Style="{StaticResource MainLabelResizeThumbStyle}"
+                                           DragDelta="LabelResizeRight_DragDelta"
+                                           DragCompleted="LabelResize_DragCompleted"/>
+
+                                    <Thumb Height="8"
+                                           VerticalAlignment="Bottom"
+                                           Cursor="SizeNS"
+                                           Style="{StaticResource MainLabelResizeThumbStyle}"
+                                           DragDelta="LabelResizeBottom_DragDelta"
+                                           DragCompleted="LabelResize_DragCompleted"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ItemsControl x:Name="MainAppsControl"
+                              ItemsSource="{Binding MainApps, RelativeSource={RelativeSource AncestorType=Window}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left" Value="{Binding X}" />
+                            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Width="110" Height="110">
                                 <Border Width="110"
                                         Height="110"
                                         Background="#1A2028"
@@ -141,41 +316,142 @@
                                         VerticalAlignment="Top"
                                         Margin="5,5,0,0"
                                         Style="{StaticResource MainAppTileButtonStyle}"
-                                        PreviewMouseLeftButtonUp="MainAppTile_MouseLeftButtonUp"/>
+                                        PreviewMouseLeftButtonDown="MainAppTile_PreviewMouseLeftButtonDown"
+                                        PreviewMouseMove="MainAppTile_PreviewMouseMove"
+                                        PreviewMouseLeftButtonUp="MainAppTile_PreviewMouseLeftButtonUp"/>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </ScrollViewer>
+            </Grid>
         </Grid>
 
-        <Border Grid.Row="1"
-                HorizontalAlignment="Right"
-                Margin="0,0,0,0"
-                Padding="12,8,12,8"
-                CornerRadius="12"
-                Background="#2A2E39"
-                BorderBrush="#3D4252"
-                BorderThickness="1">
-            <StackPanel>
-                <TextBlock Text="WINHOOME"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="#E6E8EF"
-                           HorizontalAlignment="Right"
-                           Margin="0,0,2,6"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="PinButton" Style="{StaticResource IconButtonStyle}" Click="PinButton_Click" ToolTip="固定：松开快捷键时不隐藏">
-                        <Grid>
-                            <Ellipse Fill="Transparent" x:Name="PinBg" />
-                            <TextBlock FontSize="18" Foreground="#FFFFFF" VerticalAlignment="Center" HorizontalAlignment="Center">📌</TextBlock>
-                        </Grid>
-                    </Button>
-                    <Button x:Name="ConfigButton" Style="{StaticResource IconButtonStyle}" Click="ConfigButton_Click" ToolTip="打开设置（配置界面）">
-                        <TextBlock FontSize="18" Foreground="#FFFFFF">⚙</TextBlock>
-                    </Button>
-                </StackPanel>
-            </StackPanel>
+        <Border x:Name="MainDockBar"
+                Style="{StaticResource DockBarStyle}"
+                Panel.ZIndex="1000"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                Margin="12,0,12,10"
+                SnapsToDevicePixels="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="MainDockDropZone"
+                        Grid.Column="0"
+                        Margin="0,0,0,0"
+                        CornerRadius="10"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        MinHeight="62">
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ScrollViewer Grid.Column="0"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      CanContentScroll="False">
+                            <ItemsControl x:Name="MainDockAppsControl"
+                                          ItemsSource="{Binding MainDockApps, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MainDockAppButtonStyle}"
+                                                PreviewMouseLeftButtonDown="DockAppButton_PreviewMouseLeftButtonDown"
+                                                PreviewMouseMove="DockAppButton_PreviewMouseMove"
+                                                PreviewMouseLeftButtonUp="DockAppButton_PreviewMouseLeftButtonUp"
+                                                Click="MainDockAppButton_Click"
+                                                ToolTip="{Binding Name}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,8,0">
+                        <Button x:Name="ZoomOutButton"
+                                Style="{StaticResource IconButtonStyle}"
+                                Click="ZoomOutButton_Click"
+                                ToolTip="整体缩小">
+                            <Viewbox Width="18" Height="18" Stretch="Uniform">
+                                <Path Data="{StaticResource IconMinusGeometry}"
+                                      Stroke="#FFFFFF"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      SnapsToDevicePixels="True"/>
+                            </Viewbox>
+                        </Button>
+                        <Button x:Name="ZoomInButton"
+                                Style="{StaticResource IconButtonStyle}"
+                                Click="ZoomInButton_Click"
+                                Margin="0,6,0,0"
+                                ToolTip="整体放大">
+                            <Viewbox Width="18" Height="18" Stretch="Uniform">
+                                <Path Data="{StaticResource IconPlusGeometry}"
+                                      Stroke="#FFFFFF"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      SnapsToDevicePixels="True"/>
+                            </Viewbox>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Vertical" Margin="0,0,10,0">
+                        <Button x:Name="ConfigButton"
+                                Style="{StaticResource IconButtonStyle}"
+                                Click="ConfigButton_Click"
+                                ToolTip="打开设置（配置界面）">
+                            <TextBlock FontSize="18" Foreground="#FFFFFF">⚙</TextBlock>
+                        </Button>
+                        <Button x:Name="PinButton"
+                                Style="{StaticResource IconButtonStyle}"
+                                Click="PinButton_Click"
+                                Margin="0,6,0,0"
+                                ToolTip="固定：松开快捷键时不隐藏">
+                            <Grid>
+                                <Ellipse Fill="Transparent" x:Name="PinBg" />
+                                <TextBlock FontSize="18" Foreground="#FFFFFF" VerticalAlignment="Center" HorizontalAlignment="Center">📌</TextBlock>
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Vertical"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center">
+                        <TextBlock Text="WIN"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#E6E8EF"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="HOME"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#E6E8EF"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
         </Border>
     </Grid>
 </Window>

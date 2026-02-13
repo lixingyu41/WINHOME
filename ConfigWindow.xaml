@@ -69,9 +69,28 @@
             </Setter>
         </Style>
 
+        <Geometry x:Key="IconMinusGeometry">M2,8 L14,8</Geometry>
+        <Geometry x:Key="IconPlusGeometry">M2,8 L14,8 M8,2 L8,14</Geometry>
+
+        <Style x:Key="DockBarStyle" TargetType="Border">
+            <Setter Property="Padding" Value="12,8,12,8"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Background" Value="#D92A2E39"/>
+            <Setter Property="BorderBrush" Value="#8593A8"/>
+            <Setter Property="BorderThickness" Value="1.2"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="12"
+                                      ShadowDepth="0"
+                                      Opacity="0.38"
+                                      Color="#000000"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="ConfigRoot">
         <Grid.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                 <GradientStop Color="#1A1C24" Offset="0"/>
@@ -84,19 +103,26 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Size settings removed; always full screen -->
-        <DockPanel Grid.Row="0" Margin="12,10" LastChildFill="False">
-            <TextBlock Text="当前使用全屏尺寸" Foreground="#EAEAEA" VerticalAlignment="Center"/>
-        </DockPanel>
+        <Grid x:Name="ConfigContentHost"
+              Grid.RowSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <ScrollViewer
-            Grid.Row="1"
-            x:Name="GroupsScrollViewer"
-            VerticalScrollBarVisibility="Auto"
-            HorizontalScrollBarVisibility="Disabled"
-            Padding="8,8,8,8">
+            <!-- Size settings removed; always full screen -->
+            <DockPanel Grid.Row="0" Margin="12,10" LastChildFill="False">
+                <TextBlock Text="当前使用全屏尺寸" Foreground="#EAEAEA" VerticalAlignment="Center"/>
+            </DockPanel>
 
-            <ItemsControl x:Name="GroupsControl">
+            <ScrollViewer
+                Grid.Row="1"
+                x:Name="GroupsScrollViewer"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
+                Padding="8,8,8,8">
+
+                <ItemsControl x:Name="GroupsControl">
 
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -118,8 +144,8 @@
                                         <!-- MUST match tile size -->
                                         <WrapPanel
                                             Orientation="Horizontal"
-                                            ItemWidth="150"
-                                            ItemHeight="150"
+                                            ItemWidth="{Binding ConfigTileSlotSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            ItemHeight="{Binding ConfigTileSlotSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                             HorizontalAlignment="Left"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
@@ -128,6 +154,10 @@
                                     <DataTemplate>
 
                                         <Border Style="{StaticResource ConfigTileShellStyle}">
+                                            <Border.LayoutTransform>
+                                                <ScaleTransform ScaleX="{Binding ConfigTileScale, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                ScaleY="{Binding ConfigTileScale, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                            </Border.LayoutTransform>
                                             <Grid MouseLeftButtonUp="AppTile_MouseLeftButtonUp">
 
                                                 <Grid.ToolTip>
@@ -179,49 +209,89 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
 
-            </ItemsControl>
+                </ItemsControl>
 
-        </ScrollViewer>
+            </ScrollViewer>
 
-        <!-- Bubble -->
-        <Border
-            x:Name="Bubble"
-            Background="#555555"
-            CornerRadius="10"
-            Padding="10"
-            Visibility="Collapsed"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Center"
-            Margin="0,0,12,0">
+            <!-- Bubble -->
+            <Border
+                x:Name="Bubble"
+                Background="#555555"
+                CornerRadius="10"
+                Padding="10"
+                Visibility="Collapsed"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Margin="0,0,12,0">
 
-            <TextBlock
-                x:Name="BubbleText"
-                FontSize="24"
-                FontWeight="Bold"
-                Foreground="White"/>
-        </Border>
+                <TextBlock
+                    x:Name="BubbleText"
+                    FontSize="24"
+                    FontWeight="Bold"
+                    Foreground="White"/>
+            </Border>
+        </Grid>
 
-        <Border Grid.RowSpan="2"
+        <Border x:Name="ConfigDockBar"
+                Style="{StaticResource DockBarStyle}"
+                Grid.RowSpan="2"
+                Panel.ZIndex="1000"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"
                 Margin="0,0,12,10"
-                Padding="12,8,12,8"
-                CornerRadius="12"
-                Background="#2A2E39"
-                BorderBrush="#3D4252"
-                BorderThickness="1">
-            <StackPanel>
-                <TextBlock Text="WINHOOME"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="#E6E8EF"
-                           HorizontalAlignment="Right"
-                           Margin="0,0,2,6"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                SnapsToDevicePixels="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,8,0">
+                    <Button x:Name="ConfigZoomOutButton"
+                            Style="{StaticResource IconButtonStyle}"
+                            Click="ConfigZoomOutButton_Click"
+                            ToolTip="整体缩小">
+                        <Viewbox Width="18" Height="18" Stretch="Uniform">
+                            <Path Data="{StaticResource IconMinusGeometry}"
+                                  Stroke="#FFFFFF"
+                                  StrokeThickness="1.8"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  SnapsToDevicePixels="True"/>
+                        </Viewbox>
+                    </Button>
+                    <Button x:Name="ConfigZoomInButton"
+                            Style="{StaticResource IconButtonStyle}"
+                            Click="ConfigZoomInButton_Click"
+                            Margin="0,6,0,0"
+                            ToolTip="整体放大">
+                        <Viewbox Width="18" Height="18" Stretch="Uniform">
+                            <Path Data="{StaticResource IconPlusGeometry}"
+                                  Stroke="#FFFFFF"
+                                  StrokeThickness="1.8"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  SnapsToDevicePixels="True"/>
+                        </Viewbox>
+                    </Button>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Vertical" Margin="0,0,10,0">
+                    <Button x:Name="BackToMainButton"
+                            Style="{StaticResource IconButtonStyle}"
+                            Click="BackToMainButton_Click"
+                            ToolTip="返回主界面">
+                        <Path Fill="#FFFFFF"
+                              Stretch="Uniform"
+                              Width="20"
+                              Height="20"
+                              Data="M22,6 L36,18 L36,34 L28,34 L28,24 L16,24 L16,34 L8,34 L8,18 Z"/>
+                    </Button>
                     <Button x:Name="ConfigPinButton"
                             Style="{StaticResource IconButtonStyle}"
                             Click="ConfigPinButton_Click"
-                            Margin="0,0,8,0"
+                            Margin="0,6,0,0"
                             ToolTip="固定窗口">
                         <Grid>
                             <Ellipse Fill="Transparent" x:Name="ConfigPinBg" />
@@ -231,14 +301,25 @@
                                        HorizontalAlignment="Center">📌</TextBlock>
                         </Grid>
                     </Button>
-                    <Button x:Name="BackToMainButton"
-                            Style="{StaticResource IconButtonStyle}"
-                            Click="BackToMainButton_Click"
-                            ToolTip="返回主界面">
-                        <TextBlock FontSize="18" Foreground="#FFFFFF">🏠</TextBlock>
-                    </Button>
                 </StackPanel>
-            </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Vertical"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center">
+                    <TextBlock Text="WIN"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#E6E8EF"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="HOME"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#E6E8EF"
+                               HorizontalAlignment="Center"
+                               Margin="0,2,0,0"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
     </Grid>

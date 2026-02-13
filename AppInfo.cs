@@ -16,6 +16,9 @@ namespace WINHOME
         private bool _isPinned;
         private bool _isPlaceholder;
         private int _order;
+        private double _x;
+        private double _y;
+        private bool _isInDock;
 
         public string Name
         {
@@ -69,6 +72,33 @@ namespace WINHOME
         {
             get => _order;
             set { if (_order != value) { _order = value; OnPropertyChanged(); } }
+        }
+
+        /// <summary>
+        /// 主界面磁贴左上角 X 坐标（像素）。
+        /// </summary>
+        public double X
+        {
+            get => _x;
+            set { if (_x != value) { _x = value; OnPropertyChanged(); } }
+        }
+
+        /// <summary>
+        /// 主界面磁贴左上角 Y 坐标（像素）。
+        /// </summary>
+        public double Y
+        {
+            get => _y;
+            set { if (_y != value) { _y = value; OnPropertyChanged(); } }
+        }
+
+        /// <summary>
+        /// 是否显示在主界面底部 Dock 区域。
+        /// </summary>
+        public bool IsInDock
+        {
+            get => _isInDock;
+            set { if (_isInDock != value) { _isInDock = value; OnPropertyChanged(); } }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

@@ -12,25 +12,48 @@ using System.Windows.Data;
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Windows.Media;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Windows.Interop;
 
 namespace WINHOME
 {
-    public partial class ConfigWindow : Window
+    public partial class ConfigWindow : Window, INotifyPropertyChanged
     {
         private DispatcherTimer? _bubbleTimer;
         private MainWindow? _ownerMainWindow;
         private bool _closingByCommand;
+        private double _uiScale = 1.0;
+        private const double UiScaleMin = 0.5;
+        private const double UiScaleMax = 2.0;
+        private const double UiScaleStep = 0.1;
+        private const double BaseConfigTileSlot = 150.0;
         public event EventHandler? AppLaunched;
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public double ConfigTileScale { get; private set; } = 1.0;
+        public double ConfigTileSlotSize { get; private set; } = BaseConfigTileSlot;
 
         public ConfigWindow()
         {
             InitializeComponent();
             Deactivated += ConfigWindow_Deactivated;
             KeyDown += ConfigWindow_KeyDown;
+            PreviewMouseWheel += ConfigWindow_PreviewMouseWheel;
 
             Loaded += ConfigWindow_Loaded;
             PinConfigManager.ConfigChanged += PinConfigManager_ConfigChanged;
             Closed += (s, e) => PinConfigManager.ConfigChanged -= PinConfigManager_ConfigChanged;
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            try
+            {
+                WindowStyleInterop.ApplyNoAltTabToolWindow(new WindowInteropHelper(this).Handle);
+            }
+            catch { }
         }
 
         internal void SetMainWindowContext(MainWindow mainWindow)
@@ -47,6 +70,7 @@ namespace WINHOME
         private void ConfigWindow_Loaded(object sender, RoutedEventArgs e)
         {
             SyncPinVisual();
+            SyncUiScaleFromConfig();
 
             // cancel any scheduled cache clear because user opened config
             StartMenuScanner.CancelScheduledClear();
@@ -235,6 +259,15 @@ namespace WINHOME
             Close();
         }
 
+        private void ConfigWindow_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
+            if (e.Delta == 0) return;
+
+            AdjustUiScale(e.Delta > 0 ? UiScaleStep : -UiScaleStep);
+            e.Handled = true;
+        }
+
         protected override void OnClosed(EventArgs e)
         {
             if (_ownerMainWindow != null)
@@ -252,6 +285,93 @@ namespace WINHOME
         {
             _ownerMainWindow?.TogglePinState();
             SyncPinVisual();
+        }
+
+        private void ConfigZoomOutButton_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustUiScale(-UiScaleStep);
+        }
+
+        private void ConfigZoomInButton_Click(object sender, RoutedEventArgs e)
+        {
+            AdjustUiScale(UiScaleStep);
+        }
+
+        private void AdjustUiScale(double delta)
+        {
+            double next = ClampUiScale(_uiScale + delta);
+            if (Math.Abs(next - _uiScale) < 0.0001)
+            {
+                return;
+            }
+
+            ApplyUiScale(next);
+            PinConfigManager.UpdateUiScale(next);
+        }
+
+        private void SyncUiScaleFromConfig()
+        {
+            ApplyUiScale(PinConfigManager.GetUiScale());
+        }
+
+        private void ApplyUiScale(double value)
+        {
+            _uiScale = ClampUiScale(value);
+            UpdateScaleValues(_uiScale);
+            RefreshLayoutForScale();
+            UpdateScaleButtons();
+        }
+
+        private void UpdateScaleValues(double scale)
+        {
+            if (Math.Abs(ConfigTileScale - scale) > 0.0001)
+            {
+                ConfigTileScale = scale;
+                RaisePropertyChanged(nameof(ConfigTileScale));
+            }
+
+            double slotSize = BaseConfigTileSlot * scale;
+            if (Math.Abs(ConfigTileSlotSize - slotSize) > 0.0001)
+            {
+                ConfigTileSlotSize = slotSize;
+                RaisePropertyChanged(nameof(ConfigTileSlotSize));
+            }
+        }
+
+        private void RefreshLayoutForScale()
+        {
+            if (GroupsControl == null || GroupsScrollViewer == null) return;
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                GroupsControl.InvalidateMeasure();
+                GroupsControl.InvalidateArrange();
+                GroupsControl.UpdateLayout();
+                GroupsScrollViewer.InvalidateMeasure();
+                GroupsScrollViewer.InvalidateArrange();
+                GroupsScrollViewer.UpdateLayout();
+            }, DispatcherPriority.Background);
+        }
+
+        private void UpdateScaleButtons()
+        {
+            if (ConfigZoomOutButton != null)
+            {
+                ConfigZoomOutButton.IsEnabled = _uiScale > UiScaleMin + 0.0001;
+            }
+
+            if (ConfigZoomInButton != null)
+            {
+                ConfigZoomInButton.IsEnabled = _uiScale < UiScaleMax - 0.0001;
+            }
+        }
+
+        private static double ClampUiScale(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return 1.0;
+            if (value < UiScaleMin) return UiScaleMin;
+            if (value > UiScaleMax) return UiScaleMax;
+            return value;
         }
 
         private void BackToMainButton_Click(object sender, RoutedEventArgs e)
@@ -372,7 +492,11 @@ namespace WINHOME
         {
             try
             {
-                Dispatcher.Invoke(RefreshPinnedFlags);
+                Dispatcher.Invoke(() =>
+                {
+                    RefreshPinnedFlags();
+                    SyncUiScaleFromConfig();
+                });
             }
             catch { }
         }
@@ -490,6 +614,11 @@ namespace WINHOME
                            || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0
                            || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
             return winDown && altDown;
+        }
+
+        private void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
 

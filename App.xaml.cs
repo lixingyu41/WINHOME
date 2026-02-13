@@ -18,7 +18,8 @@ namespace WINHOME
             try
             {
                 _mainWindow = new MainWindow();
-                _mainWindow.Hide();
+                _mainWindow.WindowState = WindowState.Minimized;
+                _mainWindow.Show();
 
                 Task.Run(StartMenuScanner.PreloadAsync);
                 Task.Run(PinConfigManager.Load);
