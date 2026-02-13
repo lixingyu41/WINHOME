@@ -34,7 +34,6 @@ namespace WINHOME
         private FrameworkElement? _draggingDockElement;
         private Point _dragStartDockCursor;
         private bool _draggingDockMoved;
-        private string? _suppressDockClickPath;
         private MainLabelInfo? _draggingLabel;
         private FrameworkElement? _draggingLabelElement;
         private Point _dragStartLabelCursor;
@@ -59,7 +58,7 @@ namespace WINHOME
         public bool IsPinned => _pinned;
 
         public bool IsConfigWindowOpen => _configWindow != null;
-        public bool IsLauncherPresented => IsVisible && WindowState != WindowState.Minimized;
+        public bool IsLauncherPresented => IsVisible;
 
         internal event EventHandler? PinStateChanged;
 
@@ -183,7 +182,7 @@ namespace WINHOME
         {
             ResetPinStateOnHide();
             SetTopmostState(false);
-            MinimizeToBackground();
+            Hide();
         }
 
         public void SetTopmostState(bool isTopmost)
@@ -311,7 +310,12 @@ namespace WINHOME
             Point dropPointInWindow = e.GetPosition(this);
             CancelDockDraggingState();
 
-            if (!moved) return;
+            if (!moved)
+            {
+                LaunchMainApp(appInfo);
+                e.Handled = true;
+                return;
+            }
 
             if (!IsPointInMainDockDropZone(dropPointInWindow))
             {
@@ -321,7 +325,6 @@ namespace WINHOME
                 MoveDockAppToMain(appInfo, snapped);
             }
 
-            _suppressDockClickPath = appInfo.Path;
             e.Handled = true;
         }
 
@@ -329,14 +332,6 @@ namespace WINHOME
         {
             if (sender is not FrameworkElement element) return;
             if (element.DataContext is not AppInfo appInfo) return;
-
-            if (!string.IsNullOrWhiteSpace(_suppressDockClickPath) &&
-                string.Equals(_suppressDockClickPath, appInfo.Path, StringComparison.OrdinalIgnoreCase))
-            {
-                _suppressDockClickPath = null;
-                e.Handled = true;
-                return;
-            }
 
             LaunchMainApp(appInfo);
             e.Handled = true;
@@ -735,9 +730,14 @@ namespace WINHOME
         {
             if (_configWindow != null)
             {
-                try { _configWindow.Activate(); } catch { }
+                try
+                {
+                    _configWindow.Show();
+                    _configWindow.Activate();
+                }
+                catch { }
                 SetTopmostState(false);
-                MinimizeToBackground();
+                Hide();
                 return;
             }
 
@@ -760,19 +760,10 @@ namespace WINHOME
 
             _configWindow = configWindow;
             ConfigWindowStateChanged?.Invoke(this, new ConfigWindowStateChangedEventArgs(true, false));
-            _configWindow.Show();
             SetTopmostState(false);
-            MinimizeToBackground();
-        }
-
-        private void MinimizeToBackground()
-        {
-            if (!IsVisible)
-            {
-                Show();
-            }
-
-            WindowState = WindowState.Minimized;
+            Hide();
+            _configWindow.Show();
+            try { _configWindow.Activate(); } catch { }
         }
 
         public void CloseConfigWindow()
