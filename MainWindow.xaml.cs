@@ -25,6 +25,7 @@ namespace WINHOME
         private const double UiScaleStep = 0.1;
         private const double TileSlotSize = 110.0;
         private const double DragStartThreshold = 5.0;
+        private const double DockDragStartThreshold = 12.0;
         private AppInfo? _draggingApp;
         private FrameworkElement? _draggingElement;
         private Point _dragStartCursor;
@@ -294,7 +295,7 @@ namespace WINHOME
             Point current = e.GetPosition(this);
             Vector delta = current - _dragStartDockCursor;
             if (!_draggingDockMoved &&
-                (Math.Abs(delta.X) >= DragStartThreshold || Math.Abs(delta.Y) >= DragStartThreshold))
+                (Math.Abs(delta.X) >= DockDragStartThreshold || Math.Abs(delta.Y) >= DockDragStartThreshold))
             {
                 _draggingDockMoved = true;
             }
@@ -736,8 +737,7 @@ namespace WINHOME
                     _configWindow.Activate();
                 }
                 catch { }
-                SetTopmostState(false);
-                Hide();
+                HideMainAfterConfigIsShown(_configWindow);
                 return;
             }
 
@@ -760,10 +760,43 @@ namespace WINHOME
 
             _configWindow = configWindow;
             ConfigWindowStateChanged?.Invoke(this, new ConfigWindowStateChangedEventArgs(true, false));
-            SetTopmostState(false);
-            Hide();
             _configWindow.Show();
             try { _configWindow.Activate(); } catch { }
+            HideMainAfterConfigIsShown(_configWindow);
+        }
+
+        private void HideMainAfterConfigIsShown(Window configWindow)
+        {
+            if (configWindow == null) return;
+
+            void HideMainOnce()
+            {
+                SetTopmostState(false);
+                Hide();
+            }
+
+            if (configWindow.IsActive)
+            {
+                HideMainOnce();
+                return;
+            }
+
+            EventHandler? activatedHandler = null;
+            activatedHandler = (_, _) =>
+            {
+                configWindow.Activated -= activatedHandler;
+                HideMainOnce();
+            };
+            configWindow.Activated += activatedHandler;
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (configWindow.IsVisible)
+                {
+                    configWindow.Activated -= activatedHandler;
+                    HideMainOnce();
+                }
+            }, DispatcherPriority.Background);
         }
 
         public void CloseConfigWindow()
