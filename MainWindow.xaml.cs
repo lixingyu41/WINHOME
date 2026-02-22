@@ -18,6 +18,7 @@ namespace WINHOME
     public partial class MainWindow : Window
     {
         private ConfigWindow? _configWindow;
+        private bool _allowClose;
         private bool _pinned;
         private double _uiScale = 1.0;
         private const double UiScaleMin = 0.5;
@@ -69,6 +70,11 @@ namespace WINHOME
 
         protected override void OnClosing(CancelEventArgs e)
         {
+            if (_allowClose)
+            {
+                return;
+            }
+
             e.Cancel = true;
             HideLauncher();
         }
@@ -184,6 +190,25 @@ namespace WINHOME
             ResetPinStateOnHide();
             SetTopmostState(false);
             Hide();
+        }
+
+        public void OpenHomePageFromTray()
+        {
+            CloseConfigWindow();
+            ShowLauncher();
+            FocusLauncher();
+        }
+
+        public void OpenConfigPageFromTray()
+        {
+            MoveToCurrentMonitorFullScreen();
+            OpenConfigWindow();
+        }
+
+        internal void PrepareForExit()
+        {
+            _allowClose = true;
+            CloseConfigWindow();
         }
 
         public void SetTopmostState(bool isTopmost)
