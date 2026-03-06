@@ -110,9 +110,9 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <!-- Size settings removed; always full screen -->
+            <!-- Windowed layout is applied automatically from launcher settings -->
             <DockPanel Grid.Row="0" Margin="12,10" LastChildFill="False">
-                <TextBlock Text="当前使用全屏尺寸" Foreground="#EAEAEA" VerticalAlignment="Center"/>
+                <TextBlock Text="当前使用窗口化大尺寸布局" Foreground="#EAEAEA" VerticalAlignment="Center"/>
             </DockPanel>
 
             <ScrollViewer
@@ -324,3 +324,4 @@
 
     </Grid>
 </Window>
+

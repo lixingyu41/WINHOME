@@ -21,9 +21,18 @@ namespace WINHOME
         private bool _allowClose;
         private bool _pinned;
         private double _uiScale = 1.0;
-        private const double UiScaleMin = 0.5;
+        private double _manualUiScale = 1.0;
+        private double _windowResponsiveScale = 1.0;
+        private const double UiScaleMin = 0.3;
         private const double UiScaleMax = 2.0;
         private const double UiScaleStep = 0.1;
+        private const double DefaultWindowWidthRatio = 0.88;
+        private const double DefaultWindowHeightRatio = 0.82;
+        private const double WindowRatioMin = 0.3;
+        private const double WindowRatioMax = 1.0;
+        private const double WindowWidthShrinkFactor = 0.75;
+        private const double WindowBottomGap = 8.0;
+        private const double ContentShrinkFactor = 1.2;
         private const double TileSlotSize = 110.0;
         private const double DragStartThreshold = 5.0;
         private const double DockDragStartThreshold = 12.0;
@@ -92,7 +101,7 @@ namespace WINHOME
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            MoveToCurrentMonitorFullScreen();
+            MoveToCurrentMonitorWindowed();
             LoadMainApps();
             SyncUiScaleFromConfig();
 
@@ -168,7 +177,7 @@ namespace WINHOME
 
         public void ShowLauncher()
         {
-            MoveToCurrentMonitorFullScreen();
+            MoveToCurrentMonitorWindowed();
 
             if (!IsVisible)
             {
@@ -202,7 +211,7 @@ namespace WINHOME
 
         public void OpenConfigPageFromTray()
         {
-            MoveToCurrentMonitorFullScreen();
+            MoveToCurrentMonitorWindowed();
             OpenConfigWindow();
         }
 
@@ -662,19 +671,26 @@ namespace WINHOME
 
         private void AdjustUiScale(double delta)
         {
-            double next = ClampUiScale(_uiScale + delta);
-            if (Math.Abs(next - _uiScale) < 0.0001)
+            double next = ClampUiScale(_manualUiScale + delta);
+            if (Math.Abs(next - _manualUiScale) < 0.0001)
             {
                 return;
             }
 
-            ApplyUiScale(next);
+            _manualUiScale = next;
+            ApplyCombinedUiScale();
             PinConfigManager.UpdateUiScale(next);
         }
 
         private void SyncUiScaleFromConfig()
         {
-            ApplyUiScale(PinConfigManager.GetUiScale());
+            _manualUiScale = ClampUiScale(PinConfigManager.GetUiScale());
+            ApplyCombinedUiScale();
+        }
+
+        private void ApplyCombinedUiScale()
+        {
+            ApplyUiScale(_manualUiScale * _windowResponsiveScale * ContentShrinkFactor);
         }
 
         private void ApplyUiScale(double value)
@@ -685,6 +701,12 @@ namespace WINHOME
             {
                 MainScaleTransform.ScaleX = _uiScale;
                 MainScaleTransform.ScaleY = _uiScale;
+            }
+
+            if (MainDockScaleTransform != null)
+            {
+                MainDockScaleTransform.ScaleX = _uiScale;
+                MainDockScaleTransform.ScaleY = _uiScale;
             }
 
             UpdateMainGridVisual();
@@ -703,12 +725,12 @@ namespace WINHOME
         {
             if (ZoomOutButton != null)
             {
-                ZoomOutButton.IsEnabled = _uiScale > UiScaleMin + 0.0001;
+                ZoomOutButton.IsEnabled = _manualUiScale > UiScaleMin + 0.0001;
             }
 
             if (ZoomInButton != null)
             {
-                ZoomInButton.IsEnabled = _uiScale < UiScaleMax - 0.0001;
+                ZoomInButton.IsEnabled = _manualUiScale < UiScaleMax - 0.0001;
             }
         }
 
@@ -1077,16 +1099,47 @@ namespace WINHOME
             return new Point(col * TileSlotSize, row * TileSlotSize);
         }
 
-        private void MoveToCurrentMonitorFullScreen()
+        private void MoveToCurrentMonitorWindowed()
         {
-            var area = GetCurrentMonitorRect();
-            Width = area.Width;
-            Height = area.Height;
-            Left = area.Left;
-            Top = area.Top;
+            var area = GetCurrentMonitorRect(useWorkArea: true);
+            if (area.Width <= 1 || area.Height <= 1)
+            {
+                area = SystemParameters.WorkArea;
+            }
+
+            var (widthRatioRaw, heightRatioRaw) = PinConfigManager.GetWindowRatios();
+            double widthRatio = ClampRatio(widthRatioRaw, WindowRatioMin, WindowRatioMax, DefaultWindowWidthRatio);
+            double heightRatio = ClampRatio(heightRatioRaw, WindowRatioMin, WindowRatioMax, DefaultWindowHeightRatio);
+
+            // Migrate historical full-screen defaults to windowed defaults.
+            if (widthRatio >= WindowRatioMax - 0.0001 && heightRatio >= WindowRatioMax - 0.0001)
+            {
+                widthRatio = DefaultWindowWidthRatio;
+                heightRatio = DefaultWindowHeightRatio;
+            }
+
+            widthRatio = ClampRatio(widthRatio * WindowWidthShrinkFactor, WindowRatioMin, WindowRatioMax, DefaultWindowWidthRatio * WindowWidthShrinkFactor);
+
+            double targetWidth = Math.Max(320, area.Width * widthRatio);
+            double targetHeight = Math.Max(240, area.Height * heightRatio);
+            targetWidth = Math.Min(targetWidth, area.Width);
+            targetHeight = Math.Min(targetHeight, area.Height);
+
+            Width = targetWidth;
+            Height = targetHeight;
+
+            double centeredLeft = area.Left + (area.Width - Width) / 2;
+            double nearTaskbarTop = area.Bottom - Height - WindowBottomGap;
+            Left = ClampToRange(centeredLeft, area.Left, area.Right - Width);
+            Top = ClampToRange(nearTaskbarTop, area.Top, area.Bottom - Height);
+
+            double widthScale = area.Width > 0 ? Width / area.Width : 1.0;
+            double heightScale = area.Height > 0 ? Height / area.Height : 1.0;
+            _windowResponsiveScale = ClampRatio(Math.Min(widthScale, heightScale), UiScaleMin, 1.0, 1.0);
+            ApplyCombinedUiScale();
         }
 
-        private Rect GetCurrentMonitorRect()
+        private Rect GetCurrentMonitorRect(bool useWorkArea)
         {
             try
             {
@@ -1097,20 +1150,75 @@ namespace WINHOME
                     info.cbSize = Marshal.SizeOf(info);
                     if (GetMonitorInfo(hMon, ref info))
                     {
-                        return new Rect(
-                            info.rcMonitor.left,
-                            info.rcMonitor.top,
-                            info.rcMonitor.right - info.rcMonitor.left,
-                            info.rcMonitor.bottom - info.rcMonitor.top);
+                        RECT target = useWorkArea ? info.rcWork : info.rcMonitor;
+                        return ConvertRectToDip(target, hMon);
                     }
                 }
             }
             catch { }
 
+            if (useWorkArea)
+            {
+                return SystemParameters.WorkArea;
+            }
+
             return new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
         }
 
+        private static double ClampRatio(double value, double min, double max, double fallback)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return fallback;
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
+
+        private static double ClampToRange(double value, double min, double max)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return min;
+            if (max < min) return min;
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
+
+        private Rect ConvertRectToDip(RECT rect, IntPtr monitorHandle)
+        {
+            var (scaleX, scaleY) = GetMonitorDpiScale(monitorHandle);
+            double widthPx = Math.Max(0, rect.right - rect.left);
+            double heightPx = Math.Max(0, rect.bottom - rect.top);
+            return new Rect(
+                rect.left / scaleX,
+                rect.top / scaleY,
+                widthPx / scaleX,
+                heightPx / scaleY);
+        }
+
+        private (double scaleX, double scaleY) GetMonitorDpiScale(IntPtr monitorHandle)
+        {
+            try
+            {
+                if (monitorHandle != IntPtr.Zero &&
+                    GetDpiForMonitor(monitorHandle, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out uint dpiX, out uint dpiY) == 0 &&
+                    dpiX > 0 && dpiY > 0)
+                {
+                    return (dpiX / 96.0, dpiY / 96.0);
+                }
+            }
+            catch { }
+
+            var fallback = VisualTreeHelper.GetDpi(this);
+            double scaleX = fallback.DpiScaleX > 0 ? fallback.DpiScaleX : 1.0;
+            double scaleY = fallback.DpiScaleY > 0 ? fallback.DpiScaleY : 1.0;
+            return (scaleX, scaleY);
+        }
         #region P/Invoke for monitor info
+        private enum MONITOR_DPI_TYPE
+        {
+            MDT_EFFECTIVE_DPI = 0,
+            MDT_ANGULAR_DPI = 1,
+            MDT_RAW_DPI = 2
+        }
         [StructLayout(LayoutKind.Sequential)]
         private struct POINT
         {
@@ -1154,6 +1262,12 @@ namespace WINHOME
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
+        [DllImport("Shcore.dll")]
+        private static extern int GetDpiForMonitor(
+            IntPtr hmonitor,
+            MONITOR_DPI_TYPE dpiType,
+            out uint dpiX,
+            out uint dpiY);
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
 
@@ -1168,3 +1282,10 @@ namespace WINHOME
         #endregion
     }
 }
+
+
+
+
+
+
+

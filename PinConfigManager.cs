@@ -11,6 +11,8 @@ namespace WINHOME
         private static readonly string ConfigDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MyLauncher");
         private static readonly string ConfigPath = Path.Combine(ConfigDir, "config.json");
         private static readonly object _sync = new object();
+        private const double DefaultMainWidthRatio = 0.88;
+        private const double DefaultMainHeightRatio = 0.82;
 
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
@@ -469,8 +471,8 @@ namespace WINHOME
             }
 
             // clamp ratios
-            cfg.MainWidthRatio = ClampRatio(cfg.MainWidthRatio, 0.3, 1.0, 1.0);
-            cfg.MainHeightRatio = ClampRatio(cfg.MainHeightRatio, 0.3, 1.0, 1.0);
+            cfg.MainWidthRatio = ClampRatio(cfg.MainWidthRatio, 0.3, 1.0, DefaultMainWidthRatio);
+            cfg.MainHeightRatio = ClampRatio(cfg.MainHeightRatio, 0.3, 1.0, DefaultMainHeightRatio);
             cfg.UiScale = ClampRatio(cfg.UiScale, 0.5, 2.0, 1.0);
         }
 
@@ -484,8 +486,8 @@ namespace WINHOME
                 },
                 DockApps = new List<PinnedApp>(),
                 MainLabels = new List<MainLabelItem>(),
-                MainWidthRatio = 1.0,
-                MainHeightRatio = 1.0,
+                MainWidthRatio = DefaultMainWidthRatio,
+                MainHeightRatio = DefaultMainHeightRatio,
                 UiScale = 1.0
             };
         }
@@ -564,8 +566,8 @@ namespace WINHOME
         public List<PinnedGroup> Groups { get; set; } = new();
         public List<PinnedApp> DockApps { get; set; } = new();
         public List<MainLabelItem> MainLabels { get; set; } = new();
-        public double MainWidthRatio { get; set; } = 0.8;
-        public double MainHeightRatio { get; set; } = 0.7;
+        public double MainWidthRatio { get; set; } = 0.88;
+        public double MainHeightRatio { get; set; } = 0.82;
         public double UiScale { get; set; } = 1.0;
     }
 
@@ -601,3 +603,4 @@ namespace WINHOME
         public int HeightCells { get; set; } = 1;
     }
 }
+
