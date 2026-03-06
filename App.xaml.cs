@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Drawing = System.Drawing;
@@ -14,15 +15,31 @@ namespace WINHOME
         private Forms.NotifyIcon? _trayIcon;
         private Forms.ContextMenuStrip? _trayMenu;
         private Drawing.Icon? _trayIconImage;
+        private Mutex? _singleInstanceMutex;
+        private bool _ownsSingleInstanceMutex;
+        private EventWaitHandle? _showMainEvent;
+        private RegisteredWaitHandle? _showMainEventRegistration;
         private bool _isExiting;
+
+        private const string SingleInstanceMutexName = @"Local\WINHOME.SingleInstance";
+        private const string ShowMainEventName = @"Local\WINHOME.ShowMain";
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            if (!TryAcquireSingleInstanceLock())
+            {
+                SignalExistingInstanceToOpenHome();
+                Shutdown();
+                return;
+            }
+
             try
             {
+                InitializeShowMainSignalListener();
+
                 _mainWindow = new MainWindow();
                 _mainWindow.Hide();
 
@@ -41,6 +58,64 @@ namespace WINHOME
             {
                 MessageBox.Show("初始化热键监听失败: " + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private bool TryAcquireSingleInstanceLock()
+        {
+            _singleInstanceMutex = new Mutex(initiallyOwned: false, name: SingleInstanceMutexName);
+
+            try
+            {
+                _ownsSingleInstanceMutex = _singleInstanceMutex.WaitOne(0, false);
+                return _ownsSingleInstanceMutex;
+            }
+            catch (AbandonedMutexException)
+            {
+                _ownsSingleInstanceMutex = true;
+                return true;
+            }
+        }
+
+        private static void SignalExistingInstanceToOpenHome()
+        {
+            for (int i = 0; i < 20; i++)
+            {
+                try
+                {
+                    using var showMainEvent = EventWaitHandle.OpenExisting(ShowMainEventName);
+                    showMainEvent.Set();
+                    return;
+                }
+                catch (WaitHandleCannotBeOpenedException)
+                {
+                    Thread.Sleep(50);
+                }
+                catch
+                {
+                    return;
+                }
+            }
+        }
+
+        private void InitializeShowMainSignalListener()
+        {
+            _showMainEvent = new EventWaitHandle(
+                initialState: false,
+                mode: EventResetMode.AutoReset,
+                name: ShowMainEventName);
+
+            _showMainEventRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _showMainEvent,
+                static (state, timedOut) =>
+                {
+                    if (timedOut) return;
+                    if (state is not App app) return;
+
+                    app.Dispatcher.BeginInvoke(app.OpenHomePageFromTray);
+                },
+                this,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
         }
 
         private void HotkeyService_ComboPressed(object? sender, EventArgs e)
@@ -137,6 +212,36 @@ namespace WINHOME
 
             _trayIconImage?.Dispose();
             _trayIconImage = null;
+
+            if (_showMainEventRegistration != null)
+            {
+                _showMainEventRegistration.Unregister(null);
+                _showMainEventRegistration = null;
+            }
+
+            _showMainEvent?.Dispose();
+            _showMainEvent = null;
+
+            if (_singleInstanceMutex != null)
+            {
+                if (_ownsSingleInstanceMutex)
+                {
+                    try
+                    {
+                        _singleInstanceMutex.ReleaseMutex();
+                    }
+                    catch
+                    {
+                    }
+                    finally
+                    {
+                        _ownsSingleInstanceMutex = false;
+                    }
+                }
+
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
+            }
 
             base.OnExit(e);
         }

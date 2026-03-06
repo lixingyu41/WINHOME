@@ -84,7 +84,8 @@ namespace WINHOME
             base.OnSourceInitialized(e);
             try
             {
-                WindowStyleInterop.ApplyTaskbarVisibleNoAltTab(new WindowInteropHelper(this).Handle);
+                // Main window should stay off the taskbar even when visible.
+                WindowStyleInterop.ApplyNoAltTabToolWindow(new WindowInteropHelper(this).Handle);
             }
             catch { }
         }
