@@ -32,6 +32,10 @@ namespace WINHOME
         private const double WindowRatioMax = 1.0;
         private const double WindowWidthShrinkFactor = 0.75;
         private const double WindowBottomGap = 8.0;
+        private const double OuterFrameSpacing = 8.0;
+        private const double OuterFrameBorderThickness = 1.0;
+        private const double WindowOuterFrameInset = OuterFrameSpacing + OuterFrameBorderThickness;
+        private const double WindowOuterFrameSize = WindowOuterFrameInset * 2.0;
         private const double ContentShrinkFactor = 1.2;
         private const double TileSlotSize = 110.0;
         private const double DragStartThreshold = 5.0;
@@ -1120,21 +1124,23 @@ namespace WINHOME
 
             widthRatio = ClampRatio(widthRatio * WindowWidthShrinkFactor, WindowRatioMin, WindowRatioMax, DefaultWindowWidthRatio * WindowWidthShrinkFactor);
 
-            double targetWidth = Math.Max(320, area.Width * widthRatio);
-            double targetHeight = Math.Max(240, area.Height * heightRatio);
-            targetWidth = Math.Min(targetWidth, area.Width);
-            targetHeight = Math.Min(targetHeight, area.Height);
+            double targetContentWidth = Math.Max(320, area.Width * widthRatio);
+            double targetContentHeight = Math.Max(240, area.Height * heightRatio);
+            double maxContentWidth = Math.Max(1, area.Width - WindowOuterFrameSize);
+            double maxContentHeight = Math.Max(1, area.Height - WindowOuterFrameSize);
+            targetContentWidth = Math.Min(targetContentWidth, maxContentWidth);
+            targetContentHeight = Math.Min(targetContentHeight, maxContentHeight);
 
-            Width = targetWidth;
-            Height = targetHeight;
+            Width = targetContentWidth + WindowOuterFrameSize;
+            Height = targetContentHeight + WindowOuterFrameSize;
 
             double centeredLeft = area.Left + (area.Width - Width) / 2;
             double nearTaskbarTop = area.Bottom - Height - WindowBottomGap;
             Left = ClampToRange(centeredLeft, area.Left, area.Right - Width);
             Top = ClampToRange(nearTaskbarTop, area.Top, area.Bottom - Height);
 
-            double widthScale = area.Width > 0 ? Width / area.Width : 1.0;
-            double heightScale = area.Height > 0 ? Height / area.Height : 1.0;
+            double widthScale = area.Width > 0 ? targetContentWidth / area.Width : 1.0;
+            double heightScale = area.Height > 0 ? targetContentHeight / area.Height : 1.0;
             _windowResponsiveScale = ClampRatio(Math.Min(widthScale, heightScale), UiScaleMin, 1.0, 1.0);
             ApplyCombinedUiScale();
         }
@@ -1282,10 +1288,4 @@ namespace WINHOME
         #endregion
     }
 }
-
-
-
-
-
-
 

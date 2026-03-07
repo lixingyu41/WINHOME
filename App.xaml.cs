@@ -20,9 +20,11 @@ namespace WINHOME
         private EventWaitHandle? _showMainEvent;
         private RegisteredWaitHandle? _showMainEventRegistration;
         private bool _isExiting;
+        private long _lastAutoHideOnDeactivateTick = long.MinValue;
 
         private const string SingleInstanceMutexName = @"Local\WINHOME.SingleInstance";
         private const string ShowMainEventName = @"Local\WINHOME.ShowMain";
+        private const int ExternalActivationSuppressAfterAutoHideMs = 400;
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -42,6 +44,7 @@ namespace WINHOME
 
                 _mainWindow = new MainWindow();
                 _mainWindow.Hide();
+                _mainWindow.Deactivated += MainWindow_Deactivated;
 
                 Task.Run(StartMenuScanner.PreloadAsync);
                 Task.Run(PinConfigManager.Load);
@@ -111,7 +114,7 @@ namespace WINHOME
                     if (timedOut) return;
                     if (state is not App app) return;
 
-                    app.Dispatcher.BeginInvoke(app.OpenHomePageFromTray);
+                    app.Dispatcher.BeginInvoke(app.HandleExternalActivationRequest);
                 },
                 this,
                 Timeout.Infinite,
@@ -155,14 +158,67 @@ namespace WINHOME
             Dispatcher.Invoke(OpenHomePageFromTray);
         }
 
+        private void MainWindow_Deactivated(object? sender, EventArgs e)
+        {
+            if (_mainWindow == null) return;
+
+            if (_mainWindow.IsLauncherPresented && !_mainWindow.IsConfigWindowOpen && !_mainWindow.IsPinned)
+            {
+                _lastAutoHideOnDeactivateTick = Environment.TickCount64;
+            }
+        }
+
         private void OpenHomePageFromTray()
         {
+            _lastAutoHideOnDeactivateTick = long.MinValue;
             _mainWindow?.OpenHomePageFromTray();
         }
 
         private void OpenConfigPageFromTray()
         {
+            _lastAutoHideOnDeactivateTick = long.MinValue;
             _mainWindow?.OpenConfigPageFromTray();
+        }
+
+        private void HandleExternalActivationRequest()
+        {
+            if (_mainWindow == null) return;
+
+            if (_mainWindow.IsConfigWindowOpen)
+            {
+                _lastAutoHideOnDeactivateTick = long.MinValue;
+                _mainWindow.CloseConfigWindow();
+                if (_mainWindow.IsLauncherPresented)
+                {
+                    _mainWindow.HideLauncher();
+                }
+                return;
+            }
+
+            if (_mainWindow.IsLauncherPresented)
+            {
+                _lastAutoHideOnDeactivateTick = long.MinValue;
+                _mainWindow.HideLauncher();
+                return;
+            }
+
+            if (WasLauncherJustAutoHiddenOnDeactivate())
+            {
+                _lastAutoHideOnDeactivateTick = long.MinValue;
+                return;
+            }
+
+            OpenHomePageFromTray();
+        }
+
+        private bool WasLauncherJustAutoHiddenOnDeactivate()
+        {
+            if (_lastAutoHideOnDeactivateTick == long.MinValue)
+            {
+                return false;
+            }
+
+            return Environment.TickCount64 - _lastAutoHideOnDeactivateTick <= ExternalActivationSuppressAfterAutoHideMs;
         }
 
         private void ExitApplication()
@@ -198,6 +254,11 @@ namespace WINHOME
         protected override void OnExit(ExitEventArgs e)
         {
             _hotkeyService?.Dispose();
+
+            if (_mainWindow != null)
+            {
+                _mainWindow.Deactivated -= MainWindow_Deactivated;
+            }
 
             if (_trayIcon != null)
             {

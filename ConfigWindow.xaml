@@ -90,20 +90,66 @@
 
     </Window.Resources>
 
-    <Grid x:Name="ConfigRoot">
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#1A1C24" Offset="0"/>
-                <GradientStop Color="#0F1117" Offset="1"/>
-            </LinearGradientBrush>
-        </Grid.Background>
+    <Grid>
+                <Border x:Name="ConfigOuterFrame"
+                Margin="0"
+                CornerRadius="14"
+                Background="#66141A23"
+                BorderBrush="#85AFC6D9"
+                BorderThickness="1.2"
+                SnapsToDevicePixels="True"
+                IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="26"
+                                  ShadowDepth="0"
+                                  Opacity="0.45"
+                                  Color="#000000"/>
+            </Border.Effect>
+        </Border>
+        <Border Margin="1"
+                CornerRadius="13"
+                Background="#12FFFFFF"
+                BorderBrush="#2EFFFFFF"
+                BorderThickness="1"
+                IsHitTestVisible="False"/>
+                <Grid x:Name="ConfigRoot"
+              Margin="9">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+            <Border Grid.RowSpan="2"
+                    CornerRadius="14"
+                    BorderThickness="1"
+                    IsHitTestVisible="False">
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#2EFFFFFF" Offset="0"/>
+                        <GradientStop Color="#12FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#C51A1C24" Offset="0"/>
+                        <GradientStop Color="#BF0F1117" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
 
-        <Grid x:Name="ConfigContentHost"
+            <Border Grid.RowSpan="2"
+                    CornerRadius="14"
+                    IsHitTestVisible="False">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#1FFFFFFF" Offset="0"/>
+                        <GradientStop Color="#0AFFFFFF" Offset="0.28"/>
+                        <GradientStop Color="#03101822" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+
+            <Grid x:Name="ConfigContentHost"
               Grid.RowSpan="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -121,7 +167,103 @@
                 VerticalScrollBarVisibility="Auto"
                 HorizontalScrollBarVisibility="Disabled"
                 Padding="8,8,8,8">
+                <StackPanel>
 
+
+                <Border
+                    Margin="0,0,0,8"
+                    Padding="10,8"
+                    Background="#1B2431"
+                    BorderBrush="#3A4A5E"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="最新扫描到的应用"
+                                   Foreground="#EAEAEA"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"/>
+
+                        <ItemsControl Grid.Row="1"
+                                      Margin="0,8,0,0"
+                                      ItemsSource="{Binding LatestScannedApps, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel
+                                        Orientation="Horizontal"
+                                        ItemWidth="{Binding ConfigTileSlotSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        ItemHeight="{Binding ConfigTileSlotSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        HorizontalAlignment="Left"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource ConfigTileShellStyle}">
+                                        <Border.LayoutTransform>
+                                            <ScaleTransform ScaleX="{Binding ConfigTileScale, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            ScaleY="{Binding ConfigTileScale, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        </Border.LayoutTransform>
+                                        <Grid MouseLeftButtonUp="AppTile_MouseLeftButtonUp">
+
+                                            <Grid.ToolTip>
+                                                <ToolTip
+                                                    Placement="Mouse"
+                                                    ToolTipService.ShowDuration="60000"
+                                                    ToolTipService.InitialShowDelay="150"
+                                                    Background="#2B2E39"
+                                                    Foreground="White"
+                                                    Padding="8"
+                                                    HasDropShadow="True">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               TextWrapping="Wrap"
+                                                               TextTrimming="None"
+                                                               MaxWidth="360"
+                                                               FontSize="13"/>
+                                                </ToolTip>
+                                            </Grid.ToolTip>
+
+                                            <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource AppTileContent}" />
+
+                                            <Border
+                                                Background="#214A78"
+                                                CornerRadius="4"
+                                                Padding="4,2"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Top"
+                                                Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="已添加" FontSize="10" Foreground="White"/>
+                                            </Border>
+
+                                            <Border
+                                                Background="#214A78"
+                                                CornerRadius="4"
+                                                Padding="4,2"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Bottom"
+                                                Margin="0,0,2,2"
+                                                Visibility="{Binding IsInvalid, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="已失效" FontSize="10" Foreground="White"/>
+                                            </Border>
+
+                                            <Grid.ContextMenu>
+                                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                    <MenuItem Header="添加到主界面" Click="AddToMain_Click" Tag="{Binding}"/>
+                                                    <MenuItem Header="从主界面移除" Click="RemoveFromMain_Click" Tag="{Binding}"/>
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
+
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </Border>
                 <ItemsControl x:Name="GroupsControl">
 
                 <ItemsControl.ItemTemplate>
@@ -189,6 +331,16 @@
                                                     Visibility="{Binding IsPinned, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <TextBlock Text="已添加" FontSize="10" Foreground="White"/>
                                                 </Border>
+                                                <Border
+                                                    Background="#214A78"
+                                                    CornerRadius="4"
+                                                    Padding="4,2"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Bottom"
+                                                    Margin="0,0,2,2"
+                                                    Visibility="{Binding IsInvalid, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="已失效" FontSize="10" Foreground="White"/>
+                                                </Border>
 
                                                 <Grid.ContextMenu>
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -211,6 +363,7 @@
 
                 </ItemsControl>
 
+                </StackPanel>
             </ScrollViewer>
 
             <!-- Bubble -->
@@ -322,6 +475,7 @@
             </Grid>
         </Border>
 
+    </Grid>
     </Grid>
 </Window>
 

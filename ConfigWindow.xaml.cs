@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -24,6 +25,7 @@ namespace WINHOME
         private MainWindow? _ownerMainWindow;
         private bool _closingByCommand;
         private double _uiScale = 1.0;
+        private readonly List<AppInfo> _latestScannedPool = new();
         private const double UiScaleMin = 0.5;
         private const double UiScaleMax = 2.0;
         private const double UiScaleStep = 0.1;
@@ -33,6 +35,7 @@ namespace WINHOME
 
         public double ConfigTileScale { get; private set; } = 1.0;
         public double ConfigTileSlotSize { get; private set; } = BaseConfigTileSlot;
+        public ObservableCollection<AppInfo> LatestScannedApps { get; } = new();
 
         public ConfigWindow()
         {
@@ -166,7 +169,15 @@ namespace WINHOME
         {
             try
             {
-                var list = items.ToList();
+                var scannedList = (items ?? Enumerable.Empty<AppInfo>())
+                    .Where(a => a != null && !string.IsNullOrWhiteSpace(a.Path))
+                    .GroupBy(a => a.Path, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+
+                UpdateLatestScannedApps(scannedList);
+
+                var list = MergePinnedAppsForConfig(scannedList);
                 ApplyPinnedFlags(list);
 
                 var order = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#";
@@ -191,6 +202,127 @@ namespace WINHOME
             catch { }
         }
 
+        private void UpdateLatestScannedApps(IEnumerable<AppInfo> scannedItems)
+        {
+            try
+            {
+                var latestPool = (scannedItems ?? Enumerable.Empty<AppInfo>())
+                    .OrderByDescending(GetAppScanTimestampUtc)
+                    .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (latestPool.Count == 0)
+                {
+                    return;
+                }
+
+                _latestScannedPool.Clear();
+                _latestScannedPool.AddRange(latestPool);
+                RebuildLatestScannedApps();
+            }
+            catch { }
+        }
+
+        private void RebuildLatestScannedApps()
+        {
+            try
+            {
+                if (_latestScannedPool.Count == 0)
+                {
+                    return;
+                }
+
+                int maxCount = GetLatestScannedMaxItemCount();
+                var latest = _latestScannedPool.Take(maxCount).ToList();
+
+                LatestScannedApps.Clear();
+                foreach (var app in latest)
+                {
+                    LatestScannedApps.Add(app);
+                }
+            }
+            catch { }
+        }
+
+        private int GetLatestScannedMaxItemCount()
+        {
+            double slot = Math.Max(1, ConfigTileSlotSize);
+            double availableWidth = ConfigContentHost?.ActualWidth > 0
+                ? ConfigContentHost.ActualWidth - 24
+                : Width - 24;
+
+            if (double.IsNaN(availableWidth) || double.IsInfinity(availableWidth) || availableWidth <= 0)
+            {
+                availableWidth = SystemParameters.PrimaryScreenWidth * 0.75;
+            }
+
+            int columns = (int)Math.Floor(availableWidth / slot);
+            columns = Math.Max(1, columns);
+            return columns * 3;
+        }
+
+        private List<AppInfo> MergePinnedAppsForConfig(IEnumerable<AppInfo> scannedItems)
+        {
+            var result = new Dictionary<string, AppInfo>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var app in scannedItems)
+            {
+                if (app == null || string.IsNullOrWhiteSpace(app.Path)) continue;
+                result[app.Path] = app;
+            }
+
+            try
+            {
+                var cfg = PinConfigManager.Load();
+                var pinnedItems = cfg.Groups.SelectMany(g => g.Apps)
+                    .Concat(cfg.DockApps ?? new List<PinnedApp>());
+
+                foreach (var pinned in pinnedItems)
+                {
+                    if (pinned == null || string.IsNullOrWhiteSpace(pinned.Path)) continue;
+                    if (result.ContainsKey(pinned.Path)) continue;
+
+                    string fallbackName = !string.IsNullOrWhiteSpace(pinned.Name)
+                        ? pinned.Name
+                        : Path.GetFileNameWithoutExtension(pinned.Path);
+
+                    result[pinned.Path] = new AppInfo
+                    {
+                        Name = string.IsNullOrWhiteSpace(fallbackName) ? pinned.Path : fallbackName,
+                        Path = pinned.Path,
+                        Group = string.IsNullOrWhiteSpace(pinned.Group) ? "常用" : pinned.Group,
+                        Icon = StartMenuScanner.GetIconFromCacheOnly(pinned.Path)
+                    };
+                }
+            }
+            catch { }
+
+            return result.Values.ToList();
+        }
+
+        private static DateTime GetAppScanTimestampUtc(AppInfo app)
+        {
+            if (app == null || string.IsNullOrWhiteSpace(app.Path)) return DateTime.MinValue;
+
+            try
+            {
+                if (!File.Exists(app.Path)) return DateTime.MinValue;
+                DateTime created = File.GetCreationTimeUtc(app.Path);
+                DateTime modified = File.GetLastWriteTimeUtc(app.Path);
+                return created > modified ? created : modified;
+            }
+            catch
+            {
+                return DateTime.MinValue;
+            }
+        }
+
+        private static bool IsAppInvalid(AppInfo app)
+        {
+            if (app == null || string.IsNullOrWhiteSpace(app.Path)) return false;
+            try { return !File.Exists(app.Path); }
+            catch { return true; }
+        }
         private void Letter_MouseDown(object? sender, MouseButtonEventArgs e)
         {
             if (sender is TextBlock tb)
@@ -335,6 +467,7 @@ namespace WINHOME
             {
                 ConfigTileSlotSize = slotSize;
                 RaisePropertyChanged(nameof(ConfigTileSlotSize));
+                RebuildLatestScannedApps();
             }
         }
 
@@ -513,16 +646,18 @@ namespace WINHOME
                     var itemsProp = group.GetType().GetProperty("Items");
                     var items = itemsProp?.GetValue(group) as IEnumerable<AppInfo>;
                     if (items == null) continue;
-                foreach (var app in items)
-                {
-                    app.IsPinned = pinned.Contains(app.Path);
-                }
-            }
 
-            CollectionViewSource.GetDefaultView(GroupsControl.ItemsSource)?.Refresh();
+                    foreach (var app in items)
+                    {
+                        app.IsPinned = pinned.Contains(app.Path);
+                        app.IsInvalid = IsAppInvalid(app);
+                    }
+                }
+
+                CollectionViewSource.GetDefaultView(GroupsControl.ItemsSource)?.Refresh();
+            }
+            catch { }
         }
-        catch { }
-    }
 
         private void ApplyPinnedFlags(IEnumerable<AppInfo> items)
         {
@@ -532,6 +667,7 @@ namespace WINHOME
                 foreach (var app in items)
                 {
                     app.IsPinned = pinned.Contains(app.Path);
+                    app.IsInvalid = IsAppInvalid(app);
                 }
             }
             catch { }
@@ -635,3 +771,8 @@ namespace WINHOME
     }
 
 }
+
+
+
+
+

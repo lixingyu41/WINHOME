@@ -7,7 +7,7 @@
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Topmost="False"
-        Background="#161820">
+        Background="Transparent">
 
     <Window.Resources>
         <Style x:Key="IconButtonStyle" TargetType="Button">
@@ -51,19 +51,24 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <Image Grid.Row="0"
+                            <Grid ClipToBounds="True">
+                                <Image x:Name="TileIcon"
                                        Width="52"
                                        Height="52"
                                        Stretch="Uniform"
                                        Source="{Binding Icon}"
                                        HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
-                                <TextBlock Grid.Row="1"
+                                       VerticalAlignment="Center"
+                                       RenderTransformOrigin="0.5,0.5">
+                                    <Image.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="TileIconScale" ScaleX="1.42" ScaleY="1.42"/>
+                                            <TranslateTransform x:Name="TileIconTranslate" Y="0"/>
+                                        </TransformGroup>
+                                    </Image.RenderTransform>
+                                </Image>
+
+                                <TextBlock x:Name="TileNameText"
                                            Text="{Binding Name}"
                                            FontSize="10"
                                            Foreground="#F0F2FF"
@@ -71,12 +76,103 @@
                                            TextAlignment="Center"
                                            LineHeight="12"
                                            MaxHeight="28"
-                                           Margin="6,2,6,4"/>
+                                           Margin="6,0,6,6"
+                                           VerticalAlignment="Bottom"
+                                           IsHitTestVisible="False"
+                                           Opacity="0">
+                                    <TextBlock.RenderTransform>
+                                        <TranslateTransform x:Name="TileNameTranslate" Y="14"/>
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bd" Property="BorderBrush" Value="#6CA0FF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard x:Name="TileHoverIn">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="TileIconScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="TileIconScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="TileIconTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="-10"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="TileNameText"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.16"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileNameTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="0"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard x:Name="TileHoverOut">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="TileIconScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1.42"
+                                                             Duration="0:0:0.2">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="TileIconScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1.42"
+                                                             Duration="0:0:0.2">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="TileIconTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="0"
+                                                             Duration="0:0:0.2">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="TileNameText"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0"
+                                                             Duration="0:0:0.12"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileNameTranslate"
+                                                             Storyboard.TargetProperty="Y"
+                                                             To="14"
+                                                             Duration="0:0:0.2">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="bd" Property="Opacity" Value="0.85" />
@@ -148,11 +244,36 @@
         </Style>
     </Window.Resources>
 
-    <Grid x:Name="MainRoot"
-          Background="#161820"
-          ClipToBounds="True">
-        <Grid>
-            <Grid.Background>
+    <Grid>
+                <Border x:Name="MainOuterFrame"
+                Margin="0"
+                CornerRadius="14"
+                Background="#66141A23"
+                BorderBrush="#85AFC6D9"
+                BorderThickness="1.2"
+                SnapsToDevicePixels="True"
+                IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="26"
+                                  ShadowDepth="0"
+                                  Opacity="0.45"
+                                  Color="#000000"/>
+            </Border.Effect>
+        </Border>
+        <Border Margin="1"
+                CornerRadius="13"
+                Background="#12FFFFFF"
+                BorderBrush="#2EFFFFFF"
+                BorderThickness="1"
+                IsHitTestVisible="False"/>
+        <Grid x:Name="MainRoot"
+              Margin="9"
+              Background="Transparent"
+              ClipToBounds="True">
+                <Rectangle RadiusX="14"
+                   RadiusY="14"
+                   IsHitTestVisible="False">
+            <Rectangle.Fill>
                 <DrawingBrush x:Name="MainGridBrush"
                               TileMode="Tile"
                               ViewboxUnits="Absolute"
@@ -174,8 +295,18 @@
                         </GeometryDrawing>
                     </DrawingBrush.Drawing>
                 </DrawingBrush>
-            </Grid.Background>
-        </Grid>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Border CornerRadius="14"
+                IsHitTestVisible="False">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#24FFFFFF" Offset="0"/>
+                    <GradientStop Color="#10FFFFFF" Offset="0.24"/>
+                    <GradientStop Color="#0418202A" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
 
         <Grid x:Name="MainContentHost"
               Background="Transparent"
@@ -457,6 +588,7 @@
                 </Grid>
             </Grid>
         </Border>
+    </Grid>
     </Grid>
 </Window>
 

@@ -14,6 +14,7 @@ namespace WINHOME
         private ImageSource? _icon;
         private string _group = "常用";
         private bool _isPinned;
+        private bool _isInvalid;
         private bool _isPlaceholder;
         private int _order;
         private double _x;
@@ -54,6 +55,14 @@ namespace WINHOME
         {
             get => _isPinned;
             set { if (_isPinned != value) { _isPinned = value; OnPropertyChanged(); } }
+        }
+        /// <summary>
+        /// 标记应用是否已失效（例如快捷方式已不存在）。
+        /// </summary>
+        public bool IsInvalid
+        {
+            get => _isInvalid;
+            set { if (_isInvalid != value) { _isInvalid = value; OnPropertyChanged(); } }
         }
 
         /// <summary>
@@ -106,3 +115,4 @@ namespace WINHOME
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }
+
