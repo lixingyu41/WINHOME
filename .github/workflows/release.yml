@@ -2,6 +2,9 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*"
   workflow_dispatch:
@@ -38,10 +41,17 @@ jobs:
         run: |
           if ("${{ github.ref_type }}" -eq "tag") {
             $version = "${{ github.ref_name }}" -replace '^v', ''
+            $releaseTag = "${{ github.ref_name }}"
+            $isPrerelease = $version.Contains("-")
           } elseif ("${{ inputs.version }}" -ne "") {
             $version = "${{ inputs.version }}" -replace '^v', ''
+            $releaseTag = "v$version"
+            $isPrerelease = $version.Contains("-")
           } else {
             $version = "0.0.0-dev.${{ github.run_number }}"
+            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            $releaseTag = "build-${{ github.run_number }}-$shortSha"
+            $isPrerelease = $true
           }
 
           if ($version -notmatch '^\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?$') {
@@ -54,6 +64,8 @@ jobs:
 
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ASSEMBLY_VERSION=$assemblyVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "IS_PRERELEASE=$isPrerelease" | Out-File -FilePath $env:GITHUB_ENV -Append
           "PUBLISH_DIR=$repo\artifacts\publish\$env:APP_NAME" | Out-File -FilePath $env:GITHUB_ENV -Append
           "DIST_DIR=$repo\artifacts\dist" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -115,17 +127,34 @@ jobs:
           if-no-files-found: error
 
       - name: Create or update GitHub Release
-        if: github.ref_type == 'tag'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = $env:RELEASE_TAG
           $files = Get-ChildItem $env:DIST_DIR -File | ForEach-Object { $_.FullName }
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $files --clobber
           } else {
-            gh release create $tag $files --title "$env:APP_NAME $env:VERSION" --generate-notes
+            $args = @(
+              "release",
+              "create",
+              $tag
+            )
+            $args += $files
+            $args += @(
+              "--title",
+              "$env:APP_NAME $env:VERSION",
+              "--target",
+              "${{ github.sha }}",
+              "--generate-notes"
+            )
+
+            if ($env:IS_PRERELEASE -eq "True") {
+              $args += "--prerelease"
+            }
+
+            gh @args
           }
