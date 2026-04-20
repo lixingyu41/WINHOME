@@ -48,6 +48,7 @@ namespace WINHOME
 
                 Task.Run(StartMenuScanner.PreloadAsync);
                 Task.Run(PinConfigManager.Load);
+                _mainWindow.QueueStartupPreload();
 
                 _windowController = new LauncherWindowController(_mainWindow);
 

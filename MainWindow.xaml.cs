@@ -20,6 +20,8 @@ namespace WINHOME
         private ConfigWindow? _configWindow;
         private bool _allowClose;
         private bool _pinned;
+        private bool _mainAppsLoaded;
+        private bool _startupPreloadQueued;
         private double _uiScale = 1.0;
         private double _manualUiScale = 1.0;
         private double _windowResponsiveScale = 1.0;
@@ -106,7 +108,7 @@ namespace WINHOME
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             MoveToCurrentMonitorWindowed();
-            LoadMainApps();
+            EnsureMainAppsLoaded();
             SyncUiScaleFromConfig();
 
             PinConfigManager.ConfigChanged -= PinConfigManager_ConfigChanged;
@@ -223,6 +225,23 @@ namespace WINHOME
         {
             _allowClose = true;
             CloseConfigWindow();
+        }
+
+        internal void QueueStartupPreload()
+        {
+            if (_startupPreloadQueued) return;
+
+            _startupPreloadQueued = true;
+            Dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    MoveToCurrentMonitorWindowed();
+                    EnsureMainAppsLoaded();
+                    SyncUiScaleFromConfig();
+                }
+                catch { }
+            }, DispatcherPriority.ApplicationIdle);
         }
 
         public void SetTopmostState(bool isTopmost)
@@ -872,11 +891,19 @@ namespace WINHOME
             {
                 Dispatcher.Invoke(() =>
                 {
+                    _mainAppsLoaded = false;
                     LoadMainApps();
                     SyncUiScaleFromConfig();
                 });
             }
             catch { }
+        }
+
+        private void EnsureMainAppsLoaded()
+        {
+            if (_mainAppsLoaded) return;
+
+            LoadMainApps();
         }
 
         private void LoadMainApps()
@@ -943,8 +970,13 @@ namespace WINHOME
                         Dispatcher.InvokeAsync(() => app.Icon = icon, DispatcherPriority.Background);
                     }
                 });
+
+                _mainAppsLoaded = true;
             }
-            catch { }
+            catch
+            {
+                _mainAppsLoaded = false;
+            }
         }
 
         private void LoadMainLabels(PinnedConfig cfg)

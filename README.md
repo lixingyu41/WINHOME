@@ -57,3 +57,8 @@
 ## 构建与运行
 - 在仓库根目录执行 `dotnet build`（要求 .NET 8 SDK）；运行生成的 WinExe 后按 Win+Alt 唤出主界面。
 - 日志、配置、图标缓存均位于 `%AppData%\\MyLauncher`，删除目录可恢复出厂配置并清空缓存。
+
+## 自动发布
+- 推送 `vX.Y.Z` 格式的标签会触发 GitHub Actions，例如 `v1.0.0`。
+- 工作流会发布 `win-x64` 自包含版本，生成便携 ZIP 和 Inno Setup 安装包，并上传到对应 GitHub Release。
+- 手动测试可在 GitHub Actions 的 `Release` 工作流里使用 `workflow_dispatch`，可选填写版本号；手动运行只上传 workflow artifact，不创建 Release。

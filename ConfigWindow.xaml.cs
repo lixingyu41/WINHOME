@@ -26,10 +26,19 @@ namespace WINHOME
         private bool _closingByCommand;
         private double _uiScale = 1.0;
         private readonly List<AppInfo> _latestScannedPool = new();
+        private readonly ObservableCollection<ConfigAppGroup> _visibleGroups = new();
+        private List<ConfigAppGroup> _sourceGroups = new();
+        private int _nextGroupIndex;
+        private int _nextGroupItemIndex;
+        private int _groupsLoadVersion;
+        private int _configLoadVersion;
         private const double UiScaleMin = 0.5;
         private const double UiScaleMax = 2.0;
         private const double UiScaleStep = 0.1;
         private const double BaseConfigTileSlot = 150.0;
+        private const int ConfigInitialMinItems = 18;
+        private const int ConfigInitialExtraRows = 1;
+        private const int ConfigAppendBatchSize = 24;
         public event EventHandler? AppLaunched;
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -72,42 +81,60 @@ namespace WINHOME
 
         private void ConfigWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            int loadVersion = ++_configLoadVersion;
+
             SyncPinVisual();
             SyncUiScaleFromConfig();
 
             // cancel any scheduled cache clear because user opened config
             StartMenuScanner.CancelScheduledClear();
 
-            // load programs: try cached first, then background load
-            var cached = StartMenuScanner.GetCachedApps();
-            if (cached != null && cached.Count > 0)
-            {
-                BuildGroupsViewFromItems(cached);
-            }
-            else
-            {
-                GroupsControl.ItemsSource = new List<object>();
-            }
-
-            // background load to refresh and fill
-            Task.Run(() =>
-            {
-                var apps = StartMenuScanner.LoadStartMenuApps();
-                // update cache
-                StartMenuScanner.PreloadAsync();
-                Dispatcher.Invoke(() =>
-                {
-                    BuildGroupsViewFromItems(apps);
-                });
-            });
+            BeginIncrementalGroupsLoad(new List<ConfigAppGroup>());
 
             // no alphabet column (removed)
 
             // attach scroll viewer events to show bubble while scrolling
             AttachScrollViewerEvents();
+
+            Dispatcher.BeginInvoke(() => LoadConfigAppsAfterFirstRender(loadVersion), DispatcherPriority.ContextIdle);
         }
 
         // removed SetupWrapPanel: WrapPanel sizing handled by ItemsControl layout
+
+        private void LoadConfigAppsAfterFirstRender(int loadVersion)
+        {
+            if (loadVersion != _configLoadVersion) return;
+
+            var cached = StartMenuScanner.GetCachedApps();
+            if (cached.Count > 0)
+            {
+                BuildGroupsViewFromItems(cached);
+            }
+
+            RefreshStartMenuAppsInBackground(loadVersion);
+        }
+
+        private async void RefreshStartMenuAppsInBackground(int loadVersion)
+        {
+            try
+            {
+                var apps = await Task.Run(StartMenuScanner.LoadStartMenuApps);
+                StartMenuScanner.SetCachedApps(apps);
+
+                if (loadVersion != _configLoadVersion) return;
+
+                await Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (loadVersion == _configLoadVersion)
+                        {
+                            BuildGroupsViewFromItems(apps);
+                        }
+                    },
+                    DispatcherPriority.Background);
+            }
+            catch { }
+        }
 
         private void AttachScrollViewerEvents()
         {
@@ -175,10 +202,8 @@ namespace WINHOME
                     .Select(g => g.First())
                     .ToList();
 
-                UpdateLatestScannedApps(scannedList);
-
                 var list = MergePinnedAppsForConfig(scannedList);
-                ApplyPinnedFlags(list);
+                ApplyPinnedFlagsFast(list);
 
                 var order = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#";
                 var groups = list.GroupBy(a => GetGroupKey(a.Name))
@@ -186,20 +211,246 @@ namespace WINHOME
                                       int idx = order.IndexOf(g.Key);
                                       return idx >= 0 ? idx : int.MaxValue;
                                   })
-                                  .Select(g => new { Key = g.Key.ToString(), Items = g.ToList() })
+                                  .Select(g => new ConfigAppGroup(g.Key.ToString(), g.ToList()))
                                   .ToList();
-                GroupsControl.ItemsSource = groups;
-
-                // lazy-load icons in background to reduce UI init time
-                IconMemoryCache.WarmIcons(list, (app, icon) =>
-                {
-                    if (icon != null)
-                    {
-                        Dispatcher.InvokeAsync(() => app.Icon = icon, DispatcherPriority.Background);
-                    }
-                });
+                int version = BeginIncrementalGroupsLoad(groups);
+                QueueConfigIconWarm(list, version);
+                QueueConfigMetadataRefresh(scannedList, list, version);
             }
             catch { }
+        }
+
+        private int BeginIncrementalGroupsLoad(List<ConfigAppGroup> groups)
+        {
+            int version = ++_groupsLoadVersion;
+            _sourceGroups = groups ?? new List<ConfigAppGroup>();
+            _nextGroupIndex = 0;
+            _nextGroupItemIndex = 0;
+            _latestScannedPool.Clear();
+            LatestScannedApps.Clear();
+
+            _visibleGroups.Clear();
+            if (!ReferenceEquals(GroupsControl.ItemsSource, _visibleGroups))
+            {
+                GroupsControl.ItemsSource = _visibleGroups;
+            }
+
+            bool hasMore = AppendNextVisibleItems(GetInitialConfigItemCount());
+            if (hasMore)
+            {
+                Dispatcher.BeginInvoke(() => LoadRemainingGroupsIncrementally(version), DispatcherPriority.ContextIdle);
+            }
+
+            return version;
+        }
+
+        private async void LoadRemainingGroupsIncrementally(int version)
+        {
+            while (version == _groupsLoadVersion && AppendNextVisibleItems(ConfigAppendBatchSize))
+            {
+                await Dispatcher.Yield(DispatcherPriority.Background);
+            }
+        }
+
+        private bool AppendNextVisibleItems(int maxItems)
+        {
+            if (maxItems <= 0) return HasPendingGroupItems();
+
+            int appended = 0;
+            while (appended < maxItems && _nextGroupIndex < _sourceGroups.Count)
+            {
+                var sourceGroup = _sourceGroups[_nextGroupIndex];
+                if (_nextGroupItemIndex >= sourceGroup.Items.Count)
+                {
+                    _nextGroupIndex++;
+                    _nextGroupItemIndex = 0;
+                    continue;
+                }
+
+                var visibleGroup = GetOrCreateVisibleGroup(sourceGroup);
+                int remainingInGroup = sourceGroup.Items.Count - _nextGroupItemIndex;
+                int take = Math.Min(maxItems - appended, remainingInGroup);
+
+                for (int i = 0; i < take; i++)
+                {
+                    visibleGroup.Items.Add(sourceGroup.Items[_nextGroupItemIndex++]);
+                    appended++;
+                }
+
+                if (_nextGroupItemIndex >= sourceGroup.Items.Count)
+                {
+                    _nextGroupIndex++;
+                    _nextGroupItemIndex = 0;
+                }
+            }
+
+            return HasPendingGroupItems();
+        }
+
+        private ConfigAppGroup GetOrCreateVisibleGroup(ConfigAppGroup sourceGroup)
+        {
+            var last = _visibleGroups.Count > 0 ? _visibleGroups[_visibleGroups.Count - 1] : null;
+            if (last != null && string.Equals(last.Key, sourceGroup.Key, StringComparison.Ordinal))
+            {
+                return last;
+            }
+
+            var visibleGroup = new ConfigAppGroup(sourceGroup.Key);
+            _visibleGroups.Add(visibleGroup);
+            return visibleGroup;
+        }
+
+        private bool HasPendingGroupItems()
+        {
+            int groupIndex = _nextGroupIndex;
+            int itemIndex = _nextGroupItemIndex;
+
+            while (groupIndex < _sourceGroups.Count)
+            {
+                if (itemIndex < _sourceGroups[groupIndex].Items.Count)
+                {
+                    return true;
+                }
+
+                groupIndex++;
+                itemIndex = 0;
+            }
+
+            return false;
+        }
+
+        private int GetInitialConfigItemCount()
+        {
+            double slot = Math.Max(1, ConfigTileSlotSize);
+            double availableWidth = ConfigContentHost?.ActualWidth > 0
+                ? ConfigContentHost.ActualWidth - 24
+                : Width - 24;
+            double viewportHeight = GroupsScrollViewer?.ViewportHeight > 0
+                ? GroupsScrollViewer.ViewportHeight
+                : ConfigContentHost?.ActualHeight > 0
+                    ? ConfigContentHost.ActualHeight
+                    : Height;
+
+            if (double.IsNaN(availableWidth) || double.IsInfinity(availableWidth) || availableWidth <= 0)
+            {
+                availableWidth = SystemParameters.PrimaryScreenWidth * 0.75;
+            }
+
+            if (double.IsNaN(viewportHeight) || double.IsInfinity(viewportHeight) || viewportHeight <= 0)
+            {
+                viewportHeight = SystemParameters.PrimaryScreenHeight * 0.75;
+            }
+
+            int columns = Math.Max(1, (int)Math.Floor(availableWidth / slot));
+            int rows = Math.Max(1, (int)Math.Ceiling(viewportHeight / slot)) + ConfigInitialExtraRows;
+            return Math.Max(ConfigInitialMinItems, columns * rows);
+        }
+
+        private void QueueConfigIconWarm(List<AppInfo> apps, int version)
+        {
+            try
+            {
+                var visibleSnapshot = _visibleGroups
+                    .SelectMany(g => g.Items)
+                    .Where(a => a != null && !string.IsNullOrWhiteSpace(a.Path))
+                    .ToList();
+
+                WarmConfigIcons(visibleSnapshot, version, maxParallel: 2);
+
+                var fullSnapshot = (apps ?? new List<AppInfo>())
+                    .Where(a => a != null && !string.IsNullOrWhiteSpace(a.Path))
+                    .ToList();
+
+                Dispatcher.BeginInvoke(
+                    () =>
+                    {
+                        if (version == _groupsLoadVersion)
+                        {
+                            WarmConfigIcons(fullSnapshot, version, maxParallel: 2);
+                        }
+                    },
+                    DispatcherPriority.ApplicationIdle);
+            }
+            catch { }
+        }
+
+        private void WarmConfigIcons(List<AppInfo> apps, int version, int maxParallel)
+        {
+            if (apps.Count == 0) return;
+
+            IconMemoryCache.WarmIcons(apps, (app, icon) =>
+            {
+                if (icon == null) return;
+
+                Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (version == _groupsLoadVersion && app.Icon == null)
+                        {
+                            app.Icon = icon;
+                        }
+                    },
+                    DispatcherPriority.Background);
+            }, maxParallel);
+        }
+
+        private async void QueueConfigMetadataRefresh(List<AppInfo> scannedItems, List<AppInfo> allItems, int version, bool updateLatest = true)
+        {
+            try
+            {
+                var scannedSnapshot = scannedItems
+                    .Where(a => a != null && !string.IsNullOrWhiteSpace(a.Path))
+                    .ToList();
+                var allSnapshot = allItems
+                    .Where(a => a != null && !string.IsNullOrWhiteSpace(a.Path))
+                    .ToList();
+
+                var result = await Task.Run(() =>
+                {
+                    var invalidPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var app in allSnapshot)
+                    {
+                        if (IsAppInvalid(app))
+                        {
+                            invalidPaths.Add(app.Path);
+                        }
+                    }
+
+                    var latest = scannedSnapshot
+                        .Select(app => new { App = app, Timestamp = GetAppScanTimestampUtc(app) })
+                        .Where(x => x.Timestamp > DateTime.MinValue)
+                        .OrderByDescending(x => x.Timestamp)
+                        .ThenBy(x => x.App.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(x => x.App)
+                        .ToList();
+
+                    return new ConfigMetadataResult(latest, invalidPaths);
+                });
+
+                if (version != _groupsLoadVersion) return;
+
+                if (updateLatest)
+                {
+                    ApplyLatestScannedApps(result.LatestApps);
+                }
+                ApplyInvalidFlags(result.InvalidPaths);
+            }
+            catch { }
+        }
+
+        private void ApplyLatestScannedApps(List<AppInfo> latestApps)
+        {
+            _latestScannedPool.Clear();
+            _latestScannedPool.AddRange(latestApps);
+            RebuildLatestScannedApps();
+        }
+
+        private void ApplyInvalidFlags(HashSet<string> invalidPaths)
+        {
+            foreach (var app in _sourceGroups.SelectMany(g => g.Items))
+            {
+                app.IsInvalid = invalidPaths.Contains(app.Path);
+            }
         }
 
         private void UpdateLatestScannedApps(IEnumerable<AppInfo> scannedItems)
@@ -402,6 +653,9 @@ namespace WINHOME
 
         protected override void OnClosed(EventArgs e)
         {
+            _configLoadVersion++;
+            _groupsLoadVersion++;
+
             if (_ownerMainWindow != null)
             {
                 _ownerMainWindow.PinStateChanged -= OwnerMainWindow_PinStateChanged;
@@ -409,8 +663,8 @@ namespace WINHOME
             }
 
             base.OnClosed(e);
-            // schedule memory cleanup after 5s if not reopened
-            StartMenuScanner.ScheduleClearCache(TimeSpan.FromSeconds(5));
+            // Keep the scanned app list warm so reopening config does not rescan immediately.
+            StartMenuScanner.ScheduleClearCache(TimeSpan.FromHours(4));
         }
 
         private void ConfigPinButton_Click(object sender, RoutedEventArgs e)
@@ -638,28 +892,16 @@ namespace WINHOME
         {
             try
             {
-                var pinned = PinConfigManager.GetPinnedPathSet();
-                if (GroupsControl.ItemsSource == null) return;
-
-                foreach (var group in GroupsControl.ItemsSource)
-                {
-                    var itemsProp = group.GetType().GetProperty("Items");
-                    var items = itemsProp?.GetValue(group) as IEnumerable<AppInfo>;
-                    if (items == null) continue;
-
-                    foreach (var app in items)
-                    {
-                        app.IsPinned = pinned.Contains(app.Path);
-                        app.IsInvalid = IsAppInvalid(app);
-                    }
-                }
+                var allItems = _sourceGroups.SelectMany(g => g.Items).ToList();
+                ApplyPinnedFlagsFast(allItems);
+                QueueConfigMetadataRefresh(new List<AppInfo>(), allItems, _groupsLoadVersion, updateLatest: false);
 
                 CollectionViewSource.GetDefaultView(GroupsControl.ItemsSource)?.Refresh();
             }
             catch { }
         }
 
-        private void ApplyPinnedFlags(IEnumerable<AppInfo> items)
+        private void ApplyPinnedFlagsFast(IEnumerable<AppInfo> items)
         {
             try
             {
@@ -667,7 +909,6 @@ namespace WINHOME
                 foreach (var app in items)
                 {
                     app.IsPinned = pinned.Contains(app.Path);
-                    app.IsInvalid = IsAppInvalid(app);
                 }
             }
             catch { }
@@ -755,6 +996,38 @@ namespace WINHOME
         private void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private sealed class ConfigAppGroup
+        {
+            public ConfigAppGroup(string key, IEnumerable<AppInfo>? items = null)
+            {
+                Key = string.IsNullOrWhiteSpace(key) ? "#" : key;
+                Items = new ObservableCollection<AppInfo>();
+
+                if (items == null) return;
+                foreach (var item in items)
+                {
+                    Items.Add(item);
+                }
+            }
+
+            public string Key { get; }
+
+            public ObservableCollection<AppInfo> Items { get; }
+        }
+
+        private sealed class ConfigMetadataResult
+        {
+            public ConfigMetadataResult(List<AppInfo> latestApps, HashSet<string> invalidPaths)
+            {
+                LatestApps = latestApps;
+                InvalidPaths = invalidPaths;
+            }
+
+            public List<AppInfo> LatestApps { get; }
+
+            public HashSet<string> InvalidPaths { get; }
         }
 
 

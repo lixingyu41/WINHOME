@@ -298,15 +298,8 @@
             </Rectangle.Fill>
         </Rectangle>
         <Border CornerRadius="14"
-                IsHitTestVisible="False">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Color="#24FFFFFF" Offset="0"/>
-                    <GradientStop Color="#10FFFFFF" Offset="0.24"/>
-                    <GradientStop Color="#0418202A" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.Background>
-        </Border>
+                Background="#1018202A"
+                IsHitTestVisible="False"/>
 
         <Grid x:Name="MainContentHost"
               Background="Transparent"

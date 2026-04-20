@@ -121,33 +121,15 @@
 
             <Border Grid.RowSpan="2"
                     CornerRadius="14"
+                    Background="#C51A1C24"
+                    BorderBrush="#2EFFFFFF"
                     BorderThickness="1"
-                    IsHitTestVisible="False">
-                <Border.BorderBrush>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#2EFFFFFF" Offset="0"/>
-                        <GradientStop Color="#12FFFFFF" Offset="1"/>
-                    </LinearGradientBrush>
-                </Border.BorderBrush>
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#C51A1C24" Offset="0"/>
-                        <GradientStop Color="#BF0F1117" Offset="1"/>
-                    </LinearGradientBrush>
-                </Border.Background>
-            </Border>
+                    IsHitTestVisible="False"/>
 
             <Border Grid.RowSpan="2"
                     CornerRadius="14"
-                    IsHitTestVisible="False">
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#1FFFFFFF" Offset="0"/>
-                        <GradientStop Color="#0AFFFFFF" Offset="0.28"/>
-                        <GradientStop Color="#03101822" Offset="1"/>
-                    </LinearGradientBrush>
-                </Border.Background>
-            </Border>
+                    Background="#0AFFFFFF"
+                    IsHitTestVisible="False"/>
 
             <Grid x:Name="ConfigContentHost"
               Grid.RowSpan="2">

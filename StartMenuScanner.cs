@@ -41,6 +41,15 @@ namespace WINHOME
             }
         }
 
+        public static void SetCachedApps(IEnumerable<AppInfo>? apps)
+        {
+            lock (_cacheLock)
+            {
+                _cachedApps = apps?.ToList();
+                _lastPopulated = _cachedApps != null ? DateTime.UtcNow : DateTime.MinValue;
+            }
+        }
+
         private static DateTime _lastPopulated = DateTime.MinValue;
 
         public static void CancelScheduledClear()
