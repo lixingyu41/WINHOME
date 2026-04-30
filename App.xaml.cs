@@ -1,311 +1,264 @@
 using System;
+using System.Drawing;
+using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
-using Drawing = System.Drawing;
+using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 
-namespace WINHOME
+namespace WINHOME;
+
+public partial class App : Application
 {
-    public partial class App : Application
+    private const string SingleInstanceMutexName = @"Local\WINHOME.Launchpad.SingleInstance";
+    private const string ShowLaunchpadEventName = @"Local\WINHOME.Launchpad.Show";
+
+    private Mutex? _singleInstanceMutex;
+    private bool _ownsSingleInstanceMutex;
+    private EventWaitHandle? _showLaunchpadEvent;
+    private RegisteredWaitHandle? _showLaunchpadRegistration;
+    private MainWindow? _mainWindow;
+    private Forms.NotifyIcon? _trayIcon;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private Icon? _trayIconImage;
+    private WinAltHotkeyService? _hotkeyService;
+    private bool _isExiting;
+
+    protected override void OnStartup(StartupEventArgs e)
     {
-        private HotkeyService? _hotkeyService;
-        private MainWindow? _mainWindow;
-        private LauncherWindowController? _windowController;
-        private Forms.NotifyIcon? _trayIcon;
-        private Forms.ContextMenuStrip? _trayMenu;
-        private Drawing.Icon? _trayIconImage;
-        private Mutex? _singleInstanceMutex;
-        private bool _ownsSingleInstanceMutex;
-        private EventWaitHandle? _showMainEvent;
-        private RegisteredWaitHandle? _showMainEventRegistration;
-        private bool _isExiting;
-        private long _lastAutoHideOnDeactivateTick = long.MinValue;
+        base.OnStartup(e);
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        ConfigureGpuRendering();
 
-        private const string SingleInstanceMutexName = @"Local\WINHOME.SingleInstance";
-        private const string ShowMainEventName = @"Local\WINHOME.ShowMain";
-        private const int ExternalActivationSuppressAfterAutoHideMs = 400;
-
-        protected override void OnStartup(StartupEventArgs e)
+        if (!AcquireSingleInstanceLock())
         {
-            base.OnStartup(e);
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            SignalExistingInstance();
+            Shutdown();
+            return;
+        }
 
-            if (!TryAcquireSingleInstanceLock())
+        InitializeActivationSignal();
+        InitializeTrayIcon();
+        InitializeHotkey();
+
+        _mainWindow = new MainWindow();
+        MainWindow = _mainWindow;
+        _mainWindow.PrepareBackground();
+    }
+
+    private static void ConfigureGpuRendering()
+    {
+        try
+        {
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Environment.ProcessPath) || !File.Exists(Environment.ProcessPath))
             {
-                SignalExistingInstanceToOpenHome();
-                Shutdown();
                 return;
             }
 
-            try
+            using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\DirectX\UserGpuPreferences");
+            key?.SetValue(Environment.ProcessPath, "GpuPreference=2;", RegistryValueKind.String);
+        }
+        catch
+        {
+        }
+    }
+
+    private bool AcquireSingleInstanceLock()
+    {
+        _singleInstanceMutex = new Mutex(false, SingleInstanceMutexName);
+
+        try
+        {
+            _ownsSingleInstanceMutex = _singleInstanceMutex.WaitOne(0, false);
+            return _ownsSingleInstanceMutex;
+        }
+        catch (AbandonedMutexException)
+        {
+            _ownsSingleInstanceMutex = true;
+            return true;
+        }
+    }
+
+    private static void SignalExistingInstance()
+    {
+        try
+        {
+            using var existing = EventWaitHandle.OpenExisting(ShowLaunchpadEventName);
+            existing.Set();
+        }
+        catch
+        {
+        }
+    }
+
+    private void InitializeActivationSignal()
+    {
+        _showLaunchpadEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowLaunchpadEventName);
+        _showLaunchpadRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _showLaunchpadEvent,
+            static (state, timedOut) =>
             {
-                InitializeShowMainSignalListener();
+                if (timedOut || state is not App app)
+                {
+                    return;
+                }
 
-                _mainWindow = new MainWindow();
-                _mainWindow.Hide();
-                _mainWindow.Deactivated += MainWindow_Deactivated;
+                app.Dispatcher.BeginInvoke(app.ShowLaunchpad);
+            },
+            this,
+            Timeout.Infinite,
+            false);
+    }
 
-                Task.Run(StartMenuScanner.PreloadAsync);
-                Task.Run(PinConfigManager.Load);
-                _mainWindow.QueueStartupPreload();
+    private void InitializeTrayIcon()
+    {
+        _trayMenu = new Forms.ContextMenuStrip();
+        _trayMenu.Items.Add("打开启动台", null, (_, _) => Dispatcher.Invoke(ShowLaunchpad));
+        _trayMenu.Items.Add("刷新应用", null, (_, _) => Dispatcher.Invoke(RefreshApps));
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+        _trayMenu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(ExitApplication));
 
-                _windowController = new LauncherWindowController(_mainWindow);
+        _trayIconImage = ResolveTrayIcon();
+        _trayIcon = new Forms.NotifyIcon
+        {
+            Text = "WINHOME Launchpad",
+            Icon = _trayIconImage,
+            ContextMenuStrip = _trayMenu,
+            Visible = true
+        };
 
-                _hotkeyService = new HotkeyService();
-                _hotkeyService.ComboPressed += HotkeyService_ComboPressed;
-                _hotkeyService.ComboReleased += HotkeyService_ComboReleased;
+        _trayIcon.MouseClick += TrayIcon_MouseClick;
+    }
 
-                InitializeTrayIcon();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("初始化热键监听失败: " + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+    private void InitializeHotkey()
+    {
+        _hotkeyService = new WinAltHotkeyService();
+        _hotkeyService.ToggleRequested += HotkeyService_ToggleRequested;
+    }
+
+    private void HotkeyService_ToggleRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(ToggleLaunchpad);
+    }
+
+    private void TrayIcon_MouseClick(object? sender, Forms.MouseEventArgs e)
+    {
+        if (e.Button == Forms.MouseButtons.Left)
+        {
+            Dispatcher.Invoke(ShowLaunchpad);
+        }
+    }
+
+    private void ShowLaunchpad()
+    {
+        _mainWindow ??= new MainWindow();
+        MainWindow = _mainWindow;
+        _mainWindow.PresentLaunchpad();
+    }
+
+    private void ToggleLaunchpad()
+    {
+        if (_mainWindow?.IsLaunchpadOpen == true)
+        {
+            _mainWindow.HideLaunchpad();
+            return;
         }
 
-        private bool TryAcquireSingleInstanceLock()
-        {
-            _singleInstanceMutex = new Mutex(initiallyOwned: false, name: SingleInstanceMutexName);
+        ShowLaunchpad();
+    }
 
-            try
-            {
-                _ownsSingleInstanceMutex = _singleInstanceMutex.WaitOne(0, false);
-                return _ownsSingleInstanceMutex;
-            }
-            catch (AbandonedMutexException)
-            {
-                _ownsSingleInstanceMutex = true;
-                return true;
-            }
+    private void RefreshApps()
+    {
+        ShowLaunchpad();
+        _mainWindow?.RefreshCatalog();
+    }
+
+    private void ExitApplication()
+    {
+        if (_isExiting)
+        {
+            return;
         }
 
-        private static void SignalExistingInstanceToOpenHome()
+        _isExiting = true;
+        _mainWindow?.PrepareForExit();
+        Shutdown();
+    }
+
+    private static Icon ResolveTrayIcon()
+    {
+        try
         {
-            for (int i = 0; i < 20; i++)
+            if (!string.IsNullOrWhiteSpace(Environment.ProcessPath))
+            {
+                var processIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath);
+                if (processIcon != null)
+                {
+                    return processIcon;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return (Icon)SystemIcons.Application.Clone();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        if (_trayIcon != null)
+        {
+            _trayIcon.MouseClick -= TrayIcon_MouseClick;
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
+
+        _trayMenu?.Dispose();
+        _trayMenu = null;
+
+        _trayIconImage?.Dispose();
+        _trayIconImage = null;
+
+        if (_hotkeyService != null)
+        {
+            _hotkeyService.ToggleRequested -= HotkeyService_ToggleRequested;
+            _hotkeyService.Dispose();
+            _hotkeyService = null;
+        }
+
+        _showLaunchpadRegistration?.Unregister(null);
+        _showLaunchpadRegistration = null;
+
+        _showLaunchpadEvent?.Dispose();
+        _showLaunchpadEvent = null;
+
+        if (_singleInstanceMutex != null)
+        {
+            if (_ownsSingleInstanceMutex)
             {
                 try
                 {
-                    using var showMainEvent = EventWaitHandle.OpenExisting(ShowMainEventName);
-                    showMainEvent.Set();
-                    return;
-                }
-                catch (WaitHandleCannotBeOpenedException)
-                {
-                    Thread.Sleep(50);
+                    _singleInstanceMutex.ReleaseMutex();
                 }
                 catch
                 {
-                    return;
                 }
             }
+
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
         }
 
-        private void InitializeShowMainSignalListener()
-        {
-            _showMainEvent = new EventWaitHandle(
-                initialState: false,
-                mode: EventResetMode.AutoReset,
-                name: ShowMainEventName);
-
-            _showMainEventRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showMainEvent,
-                static (state, timedOut) =>
-                {
-                    if (timedOut) return;
-                    if (state is not App app) return;
-
-                    app.Dispatcher.BeginInvoke(app.HandleExternalActivationRequest);
-                },
-                this,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
-        }
-
-        private void HotkeyService_ComboPressed(object? sender, EventArgs e)
-        {
-            Dispatcher.Invoke(() => _windowController?.HandleComboPressed());
-        }
-
-        private void HotkeyService_ComboReleased(object? sender, EventArgs e)
-        {
-            Dispatcher.Invoke(() => _windowController?.HandleComboReleased());
-        }
-
-        private void InitializeTrayIcon()
-        {
-            _trayMenu = new Forms.ContextMenuStrip();
-            _trayMenu.Items.Add("打开主页", null, (_, _) => Dispatcher.Invoke(OpenHomePageFromTray));
-            _trayMenu.Items.Add("打开配置页", null, (_, _) => Dispatcher.Invoke(OpenConfigPageFromTray));
-            _trayMenu.Items.Add(new Forms.ToolStripSeparator());
-            _trayMenu.Items.Add("退出应用", null, (_, _) => Dispatcher.Invoke(ExitApplication));
-
-            _trayIconImage = ResolveTrayIconImage();
-
-            _trayIcon = new Forms.NotifyIcon
-            {
-                Text = "WINHOME",
-                Icon = _trayIconImage,
-                Visible = true,
-                ContextMenuStrip = _trayMenu
-            };
-
-            _trayIcon.MouseClick += TrayIcon_MouseClick;
-        }
-
-        private void TrayIcon_MouseClick(object? sender, Forms.MouseEventArgs e)
-        {
-            if (e.Button != Forms.MouseButtons.Left) return;
-            Dispatcher.Invoke(OpenHomePageFromTray);
-        }
-
-        private void MainWindow_Deactivated(object? sender, EventArgs e)
-        {
-            if (_mainWindow == null) return;
-
-            if (_mainWindow.IsLauncherPresented && !_mainWindow.IsConfigWindowOpen && !_mainWindow.IsPinned)
-            {
-                _lastAutoHideOnDeactivateTick = Environment.TickCount64;
-            }
-        }
-
-        private void OpenHomePageFromTray()
-        {
-            _lastAutoHideOnDeactivateTick = long.MinValue;
-            _mainWindow?.OpenHomePageFromTray();
-        }
-
-        private void OpenConfigPageFromTray()
-        {
-            _lastAutoHideOnDeactivateTick = long.MinValue;
-            _mainWindow?.OpenConfigPageFromTray();
-        }
-
-        private void HandleExternalActivationRequest()
-        {
-            if (_mainWindow == null) return;
-
-            if (_mainWindow.IsConfigWindowOpen)
-            {
-                _lastAutoHideOnDeactivateTick = long.MinValue;
-                _mainWindow.CloseConfigWindow();
-                if (_mainWindow.IsLauncherPresented)
-                {
-                    _mainWindow.HideLauncher();
-                }
-                return;
-            }
-
-            if (_mainWindow.IsLauncherPresented)
-            {
-                _lastAutoHideOnDeactivateTick = long.MinValue;
-                _mainWindow.HideLauncher();
-                return;
-            }
-
-            if (WasLauncherJustAutoHiddenOnDeactivate())
-            {
-                _lastAutoHideOnDeactivateTick = long.MinValue;
-                return;
-            }
-
-            OpenHomePageFromTray();
-        }
-
-        private bool WasLauncherJustAutoHiddenOnDeactivate()
-        {
-            if (_lastAutoHideOnDeactivateTick == long.MinValue)
-            {
-                return false;
-            }
-
-            return Environment.TickCount64 - _lastAutoHideOnDeactivateTick <= ExternalActivationSuppressAfterAutoHideMs;
-        }
-
-        private void ExitApplication()
-        {
-            if (_isExiting) return;
-            _isExiting = true;
-
-            _mainWindow?.PrepareForExit();
-            Shutdown();
-        }
-
-        private static Drawing.Icon ResolveTrayIconImage()
-        {
-            try
-            {
-                var processPath = Environment.ProcessPath;
-                if (!string.IsNullOrWhiteSpace(processPath))
-                {
-                    var processIcon = Drawing.Icon.ExtractAssociatedIcon(processPath);
-                    if (processIcon != null)
-                    {
-                        return processIcon;
-                    }
-                }
-            }
-            catch
-            {
-            }
-
-            return (Drawing.Icon)Drawing.SystemIcons.Application.Clone();
-        }
-
-        protected override void OnExit(ExitEventArgs e)
-        {
-            _hotkeyService?.Dispose();
-
-            if (_mainWindow != null)
-            {
-                _mainWindow.Deactivated -= MainWindow_Deactivated;
-            }
-
-            if (_trayIcon != null)
-            {
-                _trayIcon.Visible = false;
-                _trayIcon.MouseClick -= TrayIcon_MouseClick;
-                _trayIcon.Dispose();
-                _trayIcon = null;
-            }
-
-            _trayMenu?.Dispose();
-            _trayMenu = null;
-
-            _trayIconImage?.Dispose();
-            _trayIconImage = null;
-
-            if (_showMainEventRegistration != null)
-            {
-                _showMainEventRegistration.Unregister(null);
-                _showMainEventRegistration = null;
-            }
-
-            _showMainEvent?.Dispose();
-            _showMainEvent = null;
-
-            if (_singleInstanceMutex != null)
-            {
-                if (_ownsSingleInstanceMutex)
-                {
-                    try
-                    {
-                        _singleInstanceMutex.ReleaseMutex();
-                    }
-                    catch
-                    {
-                    }
-                    finally
-                    {
-                        _ownsSingleInstanceMutex = false;
-                    }
-                }
-
-                _singleInstanceMutex.Dispose();
-                _singleInstanceMutex = null;
-            }
-
-            base.OnExit(e);
-        }
+        base.OnExit(e);
     }
 }

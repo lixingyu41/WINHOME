@@ -15,4 +15,24 @@
     <None Include=".github\copilot-instructions.md" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="TinyPinyin.Net" Version="1.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="AppPathIdentity.cs" />
+    <Compile Remove="ConfigWindow.xaml.cs" />
+    <Compile Remove="DisplayRotationService.cs" />
+    <Compile Remove="HotkeyService.cs" />
+    <Compile Remove="IconExtractor.cs" />
+    <Compile Remove="LauncherWindowController.cs" />
+    <Compile Remove="MainLabelInfo.cs" />
+    <Compile Remove="NativeIconExtractor.cs" />
+    <Compile Remove="PinConfigManager.cs" />
+    <Compile Remove="StartMenuScanner.cs" />
+    <Compile Remove="WindowEvents.cs" />
+    <Compile Remove="WindowStyleInterop.cs" />
+    <Page Remove="ConfigWindow.xaml" />
+  </ItemGroup>
+
 </Project>
