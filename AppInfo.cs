@@ -26,6 +26,7 @@ public sealed class AppInfo : INotifyPropertyChanged
     private bool _isDockBeingDragged;
     private bool _isFolderDropTarget;
     private bool _isHidden;
+    private bool _showHiddenChildrenInPreview;
     private double _dockScale = 1;
     private double _dockLift;
     private double _targetDockScale = 1;
@@ -154,6 +155,22 @@ public sealed class AppInfo : INotifyPropertyChanged
         }
     }
 
+    public bool ShowHiddenChildrenInPreview
+    {
+        get => _showHiddenChildrenInPreview;
+        set
+        {
+            if (_showHiddenChildrenInPreview == value)
+            {
+                return;
+            }
+
+            _showHiddenChildrenInPreview = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PreviewChildren));
+        }
+    }
+
     public double DockScale
     {
         get => _dockScale;
@@ -234,7 +251,9 @@ public sealed class AppInfo : INotifyPropertyChanged
         set => _targetDockSlotWidth = value;
     }
 
-    public IEnumerable<AppInfo> PreviewChildren => Children.Take(9);
+    public IEnumerable<AppInfo> PreviewChildren => Children
+        .Where(child => ShowHiddenChildrenInPreview || !child.IsHidden)
+        .Take(9);
 
     public string SearchIndex
     {
@@ -258,9 +277,33 @@ public sealed class AppInfo : INotifyPropertyChanged
 
     private void Children_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (e.OldItems != null)
+        {
+            foreach (AppInfo child in e.OldItems)
+            {
+                child.PropertyChanged -= Child_PropertyChanged;
+            }
+        }
+
+        if (e.NewItems != null)
+        {
+            foreach (AppInfo child in e.NewItems)
+            {
+                child.PropertyChanged += Child_PropertyChanged;
+            }
+        }
+
         _searchIndex = null;
         OnPropertyChanged(nameof(PreviewChildren));
         OnPropertyChanged(nameof(SearchIndex));
+    }
+
+    private void Child_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IsHidden))
+        {
+            OnPropertyChanged(nameof(PreviewChildren));
+        }
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

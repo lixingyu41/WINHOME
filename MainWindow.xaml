@@ -153,9 +153,6 @@
               RenderTransformOrigin="0.5,0.5"
               AllowDrop="True"
               Drop="PageHost_Drop">
-            <Grid.CacheMode>
-                <BitmapCache/>
-            </Grid.CacheMode>
             <Grid.RenderTransform>
                 <TransformGroup>
                     <ScaleTransform x:Name="PageScale" ScaleX="1" ScaleY="1"/>
@@ -169,6 +166,9 @@
                           ItemsSource="{Binding VisibleApps, RelativeSource={RelativeSource AncestorType=Window}}"
                           AllowDrop="True"
                           Drop="PageHost_Drop">
+                <ItemsControl.RenderTransform>
+                    <TranslateTransform x:Name="AppGridTranslate"/>
+                </ItemsControl.RenderTransform>
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <UniformGrid Columns="7" Rows="5"/>
@@ -177,83 +177,86 @@
 
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type local:AppInfo}">
-                        <Button Style="{StaticResource LaunchpadAppButtonStyle}"
-                                Tag="{Binding}"
-                                Click="AppButton_Click"
-                                PreviewMouseLeftButtonDown="AppButton_PreviewMouseLeftButtonDown"
-                                PreviewMouseMove="AppButton_PreviewMouseMove"
-                                ContextMenuOpening="AppButton_ContextMenuOpening"
-                                AllowDrop="False">
-                            <Button.ContextMenu>
-                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
-                                             Style="{StaticResource LaunchpadContextMenuStyle}">
-                                    <ContextMenu.Resources>
-                                        <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource LaunchpadMenuItemStyle}"/>
-                                        <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource LaunchpadMenuSeparatorStyle}"/>
-                                    </ContextMenu.Resources>
+                        <Grid Width="{Binding DataContext.TileWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                              Height="{Binding DataContext.TileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <Grid.Style>
+                                <Style TargetType="{x:Type Grid}">
+                                    <Setter Property="Opacity" Value="1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsBeingDragged}" Value="True">
+                                            <Setter Property="Opacity" Value="0.18"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
 
-                                    <MenuItem Header="打开文件位置"
-                                              Tag="OpenLocation"
-                                              Click="OpenFileLocationMenuItem_Click"/>
-                                    <MenuItem Header="以管理员身份运行"
-                                              Tag="RunAsAdmin"
-                                              Click="RunAsAdminMenuItem_Click"/>
-                                    <MenuItem Header="卸载"
-                                              Tag="Uninstall"
-                                              Click="UninstallAppMenuItem_Click"/>
-                                    <MenuItem Header="固定到 Dock"
-                                              Tag="PinToDock"
-                                              Click="PinToDockMenuItem_Click"/>
-                                    <Separator/>
-                                    <MenuItem Header="隐藏应用"
-                                              Tag="Hide"
-                                              Click="HideAppMenuItem_Click"/>
-                                    <MenuItem Header="取消隐藏"
-                                              Tag="Unhide"
-                                              Click="UnhideAppMenuItem_Click"/>
-                                </ContextMenu>
-                            </Button.ContextMenu>
-                            <Grid Width="{Binding DataContext.TileWidth, RelativeSource={RelativeSource AncestorType=Window}}"
-                                  Height="{Binding DataContext.TileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
-                                <Grid.Style>
-                                    <Style TargetType="{x:Type Grid}">
-                                        <Setter Property="Opacity" Value="1"/>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="0.69*"/>
+                                <RowDefinition Height="0.31*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.RowSpan="2"
+                                    CornerRadius="22"
+                                    Background="#22FFFFFF"
+                                    BorderBrush="#D9FFFFFF"
+                                    BorderThickness="2"
+                                    Margin="8">
+                                <Border.Style>
+                                    <Style TargetType="{x:Type Border}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsBeingDragged}" Value="True">
-                                                <Setter Property="Opacity" Value="0.18"/>
+                                            <DataTrigger Binding="{Binding IsFolderDropTarget}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </Grid.Style>
+                                </Border.Style>
+                            </Border>
 
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="0.69*"/>
-                                    <RowDefinition Height="0.31*"/>
-                                </Grid.RowDefinitions>
+                            <Button Grid.Row="0"
+                                    Style="{StaticResource LaunchpadAppButtonStyle}"
+                                    Tag="{Binding}"
+                                    Width="{Binding DataContext.AppIconHitSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    Height="{Binding DataContext.AppIconHitSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Click="AppButton_Click"
+                                    PreviewMouseLeftButtonDown="AppButton_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="AppButton_PreviewMouseMove"
+                                    ContextMenuOpening="AppButton_ContextMenuOpening"
+                                    AllowDrop="False">
+                                <Button.ContextMenu>
+                                    <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
+                                                 Style="{StaticResource LaunchpadContextMenuStyle}">
+                                        <ContextMenu.Resources>
+                                            <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource LaunchpadMenuItemStyle}"/>
+                                            <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource LaunchpadMenuSeparatorStyle}"/>
+                                        </ContextMenu.Resources>
 
-                                <Border Grid.RowSpan="2"
-                                        CornerRadius="22"
-                                        Background="#22FFFFFF"
-                                        BorderBrush="#D9FFFFFF"
-                                        BorderThickness="2"
-                                        Margin="8">
-                                    <Border.Style>
-                                        <Style TargetType="{x:Type Border}">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsFolderDropTarget}" Value="True">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                </Border>
+                                        <MenuItem Header="打开文件位置"
+                                                  Tag="OpenLocation"
+                                                  Click="OpenFileLocationMenuItem_Click"/>
+                                        <MenuItem Header="以管理员身份运行"
+                                                  Tag="RunAsAdmin"
+                                                  Click="RunAsAdminMenuItem_Click"/>
+                                        <MenuItem Header="卸载"
+                                                  Tag="Uninstall"
+                                                  Click="UninstallAppMenuItem_Click"/>
+                                        <MenuItem Header="固定到 Dock"
+                                                  Tag="PinToDock"
+                                                  Click="PinToDockMenuItem_Click"/>
+                                        <Separator/>
+                                        <MenuItem Header="隐藏应用"
+                                                  Tag="Hide"
+                                                  Click="HideAppMenuItem_Click"/>
+                                        <MenuItem Header="取消隐藏"
+                                                  Tag="Unhide"
+                                                  Click="UnhideAppMenuItem_Click"/>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
 
-                                <Grid Grid.Row="0"
-                                      Width="{Binding DataContext.IconCellSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                                      Height="{Binding DataContext.IconCellSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Bottom">
+                                <Grid Width="{Binding DataContext.IconCellSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      Height="{Binding DataContext.IconCellSize, RelativeSource={RelativeSource AncestorType=Window}}">
                                     <Border Width="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                             Height="{Binding DataContext.IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CornerRadius="{Binding DataContext.IconCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -350,8 +353,9 @@
                                                    VerticalAlignment="Center"/>
                                     </Border>
                                 </Grid>
+                            </Button>
 
-                                <TextBlock Grid.Row="1"
+                            <TextBlock Grid.Row="1"
                                            Text="{Binding Name}"
                                            Foreground="{StaticResource LaunchpadLabelBrush}"
                                            FontFamily="Segoe UI"
@@ -371,11 +375,104 @@
                                                           Color="#DD000000"/>
                                     </TextBlock.Effect>
                                 </TextBlock>
-                            </Grid>
-                        </Button>
+                        </Grid>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <Border x:Name="InvalidAppsPage"
+                    Width="{Binding AppGridWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                    Height="{Binding AppGridHeight, RelativeSource={RelativeSource AncestorType=Window}}"
+                    Visibility="Collapsed"
+                    CornerRadius="24"
+                    Background="#18FFFFFF"
+                    BorderBrush="#30FFFFFF"
+                    BorderThickness="1"
+                    Padding="34">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="InvalidPageTranslate"/>
+                </Border.RenderTransform>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="54"/>
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  PanningMode="VerticalOnly">
+                        <ItemsControl ItemsSource="{Binding InvalidApps, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:AppInfo}">
+                                    <Border Height="58"
+                                            Margin="0,0,0,8"
+                                            CornerRadius="12"
+                                            Background="#20FFFFFF"
+                                            BorderBrush="#22FFFFFF"
+                                            BorderThickness="1"
+                                            Padding="14,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="34"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="&#xE74D;"
+                                                       FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="17"
+                                                       Foreground="#E8FFFFFF"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+
+                                            <StackPanel Grid.Column="1"
+                                                        VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}"
+                                                           Foreground="White"
+                                                           FontSize="14"
+                                                           FontFamily="Segoe UI"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding LaunchCommand}"
+                                                           Foreground="#AFFFFFFF"
+                                                           FontSize="11"
+                                                           FontFamily="Segoe UI"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,3,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <Button Grid.Row="1"
+                            Width="142"
+                            Height="36"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            BorderThickness="1"
+                            BorderBrush="#40FFFFFF"
+                            Background="#32FFFFFF"
+                            Foreground="White"
+                            FontSize="14"
+                            FontFamily="Segoe UI"
+                            Content="确认清理"
+                            Cursor="Hand"
+                            Click="ConfirmInvalidAppsButton_Click"/>
+                </Grid>
+            </Border>
+
+            <Image x:Name="MainPageSnapshot"
+                   Width="{Binding AppGridWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                   Height="{Binding AppGridHeight, RelativeSource={RelativeSource AncestorType=Window}}"
+                   Visibility="Collapsed"
+                   Stretch="Fill"
+                   IsHitTestVisible="False"
+                   RenderOptions.BitmapScalingMode="HighQuality">
+                <Image.RenderTransform>
+                    <TranslateTransform x:Name="MainPageSnapshotTranslate"/>
+                </Image.RenderTransform>
+            </Image>
         </Grid>
 
         <TextBlock x:Name="StatusText"
@@ -398,14 +495,18 @@
               Background="#01000000"
               MouseLeftButtonDown="FolderOverlay_MouseLeftButtonDown"
               MouseWheel="FolderOverlay_MouseWheel">
+            <Border x:Name="FolderBackdropMask"
+                    Background="#6A0F121A"
+                    IsHitTestVisible="False"/>
+
             <Border x:Name="FolderPanel"
                     Width="{Binding FolderPanelWidth, RelativeSource={RelativeSource AncestorType=Window}}"
                     Height="{Binding FolderPanelHeight, RelativeSource={RelativeSource AncestorType=Window}}"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     CornerRadius="26"
-                    Background="#CC242630"
-                    BorderBrush="#45FFFFFF"
+                    Background="#B82A2D38"
+                    BorderBrush="#72FFFFFF"
                     BorderThickness="1"
                     Padding="26">
                 <Border.Effect>
@@ -427,7 +528,7 @@
                              Width="300"
                              HorizontalAlignment="Center"
                              BorderThickness="0"
-                             Background="#1EFFFFFF"
+                             Background="Transparent"
                              Foreground="White"
                              CaretBrush="White"
                              FontFamily="Segoe UI"
@@ -441,76 +542,147 @@
                     <ItemsControl x:Name="FolderItemsGrid"
                                   ItemsSource="{Binding VisibleFolderApps, RelativeSource={RelativeSource AncestorType=Window}}"
                                   Grid.Row="1"
-                                  Margin="0,22,0,0">
+                                  Margin="0,22,0,0"
+                                  ClipToBounds="False">
+                        <ItemsControl.RenderTransform>
+                            <TranslateTransform x:Name="FolderItemsTranslate"/>
+                        </ItemsControl.RenderTransform>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="{x:Type ContentPresenter}">
+                                <Setter Property="Panel.ZIndex" Value="0"/>
+                                <Setter Property="ClipToBounds" Value="False"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Panel.ZIndex" Value="1000"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <UniformGrid Columns="4" Rows="4"/>
+                                <UniformGrid Columns="4" Rows="4" ClipToBounds="False"/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type local:AppInfo}">
-                                <Button Style="{StaticResource LaunchpadAppButtonStyle}"
-                                        Tag="{Binding}"
-                                        Click="FolderAppButton_Click"
-                                        PreviewMouseLeftButtonDown="FolderAppButton_PreviewMouseLeftButtonDown"
-                                        PreviewMouseMove="FolderAppButton_PreviewMouseMove"
-                                        ContextMenuOpening="AppButton_ContextMenuOpening">
-                                    <Button.ContextMenu>
-                                        <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
-                                                     Style="{StaticResource LaunchpadContextMenuStyle}">
-                                            <ContextMenu.Resources>
-                                                <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource LaunchpadMenuItemStyle}"/>
-                                                <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource LaunchpadMenuSeparatorStyle}"/>
-                                            </ContextMenu.Resources>
+                                <Grid Width="{Binding DataContext.FolderTileWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      Height="{Binding DataContext.FolderTileHeight, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      ClipToBounds="False">
+                                    <Grid.Style>
+                                        <Style TargetType="{x:Type Grid}">
+                                            <Setter Property="Opacity" Value="1"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsBeingDragged}" Value="True">
+                                                    <Setter Property="Opacity" Value="0.18"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
 
-                                            <MenuItem Header="打开文件位置"
-                                                      Tag="OpenLocation"
-                                                      Click="OpenFileLocationMenuItem_Click"/>
-                                            <MenuItem Header="以管理员身份运行"
-                                                      Tag="RunAsAdmin"
-                                                      Click="RunAsAdminMenuItem_Click"/>
-                                            <MenuItem Header="卸载"
-                                                      Tag="Uninstall"
-                                                      Click="UninstallAppMenuItem_Click"/>
-                                            <MenuItem Header="固定到 Dock"
-                                                      Tag="PinToDock"
-                                                      Click="PinToDockMenuItem_Click"/>
-                                            <Separator/>
-                                            <MenuItem Header="隐藏应用"
-                                                      Tag="Hide"
-                                                      Click="HideAppMenuItem_Click"/>
-                                            <MenuItem Header="取消隐藏"
-                                                      Tag="Unhide"
-                                                      Click="UnhideAppMenuItem_Click"/>
-                                        </ContextMenu>
-                                    </Button.ContextMenu>
-                                    <Grid Width="{Binding DataContext.FolderTileWidth, RelativeSource={RelativeSource AncestorType=Window}}"
-                                          Height="{Binding DataContext.FolderTileHeight, RelativeSource={RelativeSource AncestorType=Window}}">
-                                        <Grid.Style>
-                                            <Style TargetType="{x:Type Grid}">
-                                                <Setter Property="Opacity" Value="1"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsBeingDragged}" Value="True">
-                                                        <Setter Property="Opacity" Value="0.18"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Grid.Style>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="0.76*"/>
+                                        <RowDefinition Height="0.24*"/>
+                                    </Grid.RowDefinitions>
 
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="0.69*"/>
-                                            <RowDefinition Height="0.31*"/>
-                                        </Grid.RowDefinitions>
+                                    <Button Grid.Row="0"
+                                            Style="{StaticResource LaunchpadAppButtonStyle}"
+                                            Tag="{Binding}"
+                                            Width="{Binding DataContext.FolderIconHitSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            Height="{Binding DataContext.FolderIconHitSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Bottom"
+                                            ClipToBounds="False"
+                                            Click="FolderAppButton_Click"
+                                            PreviewMouseLeftButtonDown="FolderAppButton_PreviewMouseLeftButtonDown"
+                                            PreviewMouseMove="FolderAppButton_PreviewMouseMove"
+                                            ContextMenuOpening="AppButton_ContextMenuOpening">
+                                        <Button.ContextMenu>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
+                                                         Style="{StaticResource LaunchpadContextMenuStyle}">
+                                                <ContextMenu.Resources>
+                                                    <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource LaunchpadMenuItemStyle}"/>
+                                                    <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource LaunchpadMenuSeparatorStyle}"/>
+                                                </ContextMenu.Resources>
 
-                                        <Image Source="{Binding Icon}"
-                                               Width="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                                               Height="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                                               Stretch="Uniform"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Bottom"
-                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                <MenuItem Header="打开文件位置"
+                                                          Tag="OpenLocation"
+                                                          Click="OpenFileLocationMenuItem_Click"/>
+                                                <MenuItem Header="以管理员身份运行"
+                                                          Tag="RunAsAdmin"
+                                                          Click="RunAsAdminMenuItem_Click"/>
+                                                <MenuItem Header="卸载"
+                                                          Tag="Uninstall"
+                                                          Click="UninstallAppMenuItem_Click"/>
+                                                <MenuItem Header="固定到 Dock"
+                                                          Tag="PinToDock"
+                                                          Click="PinToDockMenuItem_Click"/>
+                                                <Separator/>
+                                                <MenuItem Header="隐藏应用"
+                                                          Tag="Hide"
+                                                          Click="HideAppMenuItem_Click"/>
+                                                <MenuItem Header="取消隐藏"
+                                                          Tag="Unhide"
+                                                          Click="UnhideAppMenuItem_Click"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
 
-                                        <TextBlock Grid.Row="1"
+                                        <Grid Width="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              Height="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              ClipToBounds="False">
+                                            <Border Width="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Height="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CornerRadius="{Binding DataContext.IconCornerRadius, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Background="#26FFFFFF"
+                                                    BorderBrush="#32FFFFFF"
+                                                    BorderThickness="1">
+                                                <Border.Effect>
+                                                    <DropShadowEffect BlurRadius="18"
+                                                                      ShadowDepth="3"
+                                                                      Opacity="0.32"
+                                                                      Color="#99000000"/>
+                                                </Border.Effect>
+                                            </Border>
+
+                                            <Image Source="{Binding Icon}"
+                                                   Width="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   Height="{Binding DataContext.FolderIconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   Stretch="Uniform"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+
+                                        <Border Width="24"
+                                                Height="24"
+                                                CornerRadius="12"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Top"
+                                                Margin="0,2,2,0"
+                                                Background="#C6202228"
+                                                BorderBrush="#88FFFFFF"
+                                                BorderThickness="1">
+                                            <Border.Style>
+                                                <Style TargetType="{x:Type Border}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="&#xED1A;"
+                                                       FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="13"
+                                                       Foreground="White"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                        </Grid>
+                                    </Button>
+
+                                    <TextBlock Grid.Row="1"
                                                    Text="{Binding Name}"
                                                    Foreground="White"
                                                    FontFamily="Segoe UI"
@@ -520,12 +692,30 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    LineHeight="{Binding DataContext.AppNameLineHeight, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    MaxHeight="{Binding DataContext.AppNameMaxHeight, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                   Margin="4,4,4,0"/>
-                                    </Grid>
-                                </Button>
+                                                   Margin="4,4,4,0">
+                                        <TextBlock.Effect>
+                                            <DropShadowEffect BlurRadius="4"
+                                                              ShadowDepth="1"
+                                                              Opacity="0.85"
+                                                              Color="#DD000000"/>
+                                        </TextBlock.Effect>
+                                    </TextBlock>
+                                </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <Image x:Name="FolderPageSnapshot"
+                           Grid.Row="1"
+                           Margin="0,22,0,0"
+                           Visibility="Collapsed"
+                           Stretch="Fill"
+                           IsHitTestVisible="False"
+                           RenderOptions.BitmapScalingMode="HighQuality">
+                        <Image.RenderTransform>
+                            <TranslateTransform x:Name="FolderPageSnapshotTranslate"/>
+                        </Image.RenderTransform>
+                    </Image>
 
                     <StackPanel x:Name="FolderPageDots"
                                 Grid.Row="2"
@@ -580,16 +770,14 @@
 
         <Canvas x:Name="DragLayer"
                 Panel.ZIndex="40"
-                IsHitTestVisible="False">
+                IsHitTestVisible="False"
+                ClipToBounds="False">
             <Border x:Name="DragGhost"
                     Width="{Binding TileWidth, RelativeSource={RelativeSource AncestorType=Window}}"
                     Height="{Binding TileHeight, RelativeSource={RelativeSource AncestorType=Window}}"
                     Visibility="Collapsed"
                     Opacity="0.86"
                     RenderTransformOrigin="0.5,0.5">
-                <Border.CacheMode>
-                    <BitmapCache/>
-                </Border.CacheMode>
                 <Border.RenderTransform>
                     <ScaleTransform ScaleX="1.08" ScaleY="1.08"/>
                 </Border.RenderTransform>
@@ -642,9 +830,6 @@
                     Visibility="Collapsed"
                     Opacity="0.90"
                     RenderTransformOrigin="0.5,0.5">
-                <Border.CacheMode>
-                    <BitmapCache/>
-                </Border.CacheMode>
                 <Border.RenderTransform>
                     <ScaleTransform ScaleX="1.08" ScaleY="1.08"/>
                 </Border.RenderTransform>

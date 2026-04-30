@@ -44,6 +44,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly ObservableCollection<AppInfo> _visibleApps = new();
     private readonly ObservableCollection<AppInfo> _visibleFolderApps = new();
     private readonly ObservableCollection<AppInfo> _dockApps = new();
+    private readonly ObservableCollection<AppInfo> _invalidApps = new();
     private readonly object _catalogGate = new();
 
     private double _appGridWidth = 1176;
@@ -52,6 +53,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _tileHeight = 138;
     private double _iconCellSize = 82;
     private double _iconSize = 76;
+    private double _appIconHitSize = 94;
     private double _folderPreviewSize = 62;
     private double _folderPreviewIconSize = 17;
     private double _appNameFontSize = 13;
@@ -64,6 +66,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _folderTileWidth = 220;
     private double _folderTileHeight = 142;
     private double _folderIconSize = 82;
+    private double _folderIconHitSize = 100;
     private double _dockIconSize = 50;
     private double _dockItemSlotWidth = 58;
     private double _dockItemHeight = 68;
@@ -103,6 +106,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _suppressFolderNameChange;
     private bool _isManualDragging;
     private bool _isDockDragging;
+    private bool _isMainPageAnimating;
+    private bool _isFolderPageAnimating;
+    private int? _pendingMainPage;
+    private int? _pendingFolderPage;
+    private int _mainPageAnimationGeneration;
+    private int _folderPageAnimationGeneration;
     private bool _isForegroundResourceMode;
     private int _preloadGeneration;
     private int _backgroundCleanupGeneration;
@@ -134,6 +143,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ObservableCollection<AppInfo> VisibleApps => _visibleApps;
     public ObservableCollection<AppInfo> VisibleFolderApps => _visibleFolderApps;
     public ObservableCollection<AppInfo> DockApps => _dockApps;
+    public ObservableCollection<AppInfo> InvalidApps => _invalidApps;
     public bool IsLaunchpadOpen => IsVisible;
     public double AppGridWidth => _appGridWidth;
     public double AppGridHeight => _appGridHeight;
@@ -141,6 +151,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public double TileHeight => _tileHeight;
     public double IconCellSize => _iconCellSize;
     public double IconSize => _iconSize;
+    public double AppIconHitSize => _appIconHitSize;
     public double FolderPreviewSize => _folderPreviewSize;
     public double FolderPreviewIconSize => _folderPreviewIconSize;
     public double AppNameFontSize => _appNameFontSize;
@@ -153,6 +164,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public double FolderTileWidth => _folderTileWidth;
     public double FolderTileHeight => _folderTileHeight;
     public double FolderIconSize => _folderIconSize;
+    public double FolderIconHitSize => _folderIconHitSize;
     public double DockIconSize => _dockIconSize;
     public double DockItemSlotWidth => _dockItemSlotWidth;
     public double DockItemHeight => _dockItemHeight;
@@ -286,6 +298,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             .ToHashSet(StringComparer.OrdinalIgnoreCase)
             .SetEquals(StartMenuExtensionOptions.DefaultExtensions);
         LaunchpadSettingsStore.Save(_settings);
+        UpdateFolderPreviewHiddenMode();
 
         if (extensionChanged)
         {
@@ -371,6 +384,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         PageHost.BeginAnimation(OpacityProperty, null);
         PageTranslate.X = 0;
         PageHost.Opacity = 1;
+        PageHost.CacheMode = null;
+        PageHost.Effect = null;
+        AppGridTranslate.X = 0;
+        InvalidPageTranslate.X = 0;
+        MainPageSnapshotTranslate.X = 0;
+        MainPageSnapshot.Source = null;
+        MainPageSnapshot.Visibility = Visibility.Collapsed;
+        _isMainPageAnimating = false;
+        _pendingMainPage = null;
+        FolderItemsTranslate.X = 0;
+        FolderPageSnapshotTranslate.X = 0;
+        FolderPageSnapshot.Source = null;
+        FolderPageSnapshot.Visibility = Visibility.Collapsed;
+        _isFolderPageAnimating = false;
+        _pendingFolderPage = null;
 
         DragGhost.Visibility = Visibility.Collapsed;
         DragGhost.DataContext = null;
@@ -428,7 +456,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     }, DispatcherPriority.Background, cancellationToken);
 
                     await HydratePageAsync(0, cancellationToken).ConfigureAwait(false);
-                    return;
                 }
             }
 
@@ -436,6 +463,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var startMenuApps = await WindowsAppCatalog.LoadStartMenuAppsAsync(cancellationToken, StartMenuExtensions).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
+            var previousCatalog = AppCatalogStore.Load();
             AppCatalogStore.Save(startMenuApps);
 
             await Dispatcher.InvokeAsync(() =>
@@ -454,7 +482,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 QueuePreloadPages();
             }, DispatcherPriority.Background, cancellationToken);
 
-            _ = MergeAppsFolderWhenReadyAsync(appsFolderTask, startMenuApps, cancellationToken);
+            _ = MergeAppsFolderWhenReadyAsync(appsFolderTask, startMenuApps, previousCatalog, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -480,6 +508,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async Task MergeAppsFolderWhenReadyAsync(
         Task<IReadOnlyList<AppInfo>> appsFolderTask,
         IReadOnlyList<AppInfo> startMenuApps,
+        IReadOnlyList<AppInfo> previousCatalog,
         CancellationToken cancellationToken)
     {
         try
@@ -489,15 +518,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (appsFolderApps.Count == 0)
             {
+                var missingFileApps = LaunchpadOrderStore.FindMissingApps(startMenuApps, previousCatalog, StartMenuExtensions);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    SetInvalidApps(missingFileApps);
+                    UpdatePageDots();
+                }, DispatcherPriority.Background, cancellationToken);
                 return;
             }
 
             var combined = WindowsAppCatalog.Normalize(startMenuApps.Concat(appsFolderApps));
+            var missingApps = LaunchpadOrderStore.FindMissingApps(combined, previousCatalog, StartMenuExtensions);
             AppCatalogStore.Save(combined);
             await Dispatcher.InvokeAsync(() =>
             {
                 ReplaceCatalog(combined);
                 RebuildDock();
+                SetInvalidApps(missingApps);
                 ApplySearch(resetPage: false, animateDirection: 0);
                 QueuePreloadPages();
             }, DispatcherPriority.Background, cancellationToken);
@@ -515,7 +552,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         lock (_catalogGate)
         {
             _baseApps = LaunchpadOrderStore.ApplySavedOrder(apps).ToList();
+            UpdateFolderPreviewHiddenMode();
             ApplyConfiguredSort();
+        }
+    }
+
+    private void UpdateFolderPreviewHiddenMode()
+    {
+        foreach (var folder in _baseApps.Where(app => app.IsFolder))
+        {
+            folder.ShowHiddenChildrenInPreview = _settings.ShowHiddenApps;
+        }
+    }
+
+    private void SetInvalidApps(IEnumerable<AppInfo> apps)
+    {
+        _invalidApps.Clear();
+        foreach (var app in apps)
+        {
+            _invalidApps.Add(app);
+        }
+
+        if (_invalidApps.Count == 0 && _currentPage < 0)
+        {
+            _currentPage = 0;
         }
     }
 
@@ -650,13 +710,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 .ToList();
         }
 
-        if (resetPage)
+        if (_filteredApps.Count == 0 && _invalidApps.Count > 0)
+        {
+            _currentPage = -1;
+        }
+        else if (resetPage)
         {
             _currentPage = 0;
         }
         else
         {
-            _currentPage = Math.Clamp(_currentPage, 0, Math.Max(0, PageCount - 1));
+            var minPage = _invalidApps.Count > 0 ? -1 : 0;
+            _currentPage = Math.Clamp(_currentPage, minPage, Math.Max(0, PageCount - 1));
         }
 
         RefreshVisiblePage(animateDirection);
@@ -708,6 +773,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RefreshVisiblePage(int animateDirection)
     {
+        var outgoingSnapshot = animateDirection != 0 ? CaptureVisibleMainPageSnapshot() : null;
+
+        if (_currentPage < 0 && _invalidApps.Count > 0)
+        {
+            _visibleApps.Clear();
+            AppGrid.Visibility = Visibility.Collapsed;
+            InvalidAppsPage.Visibility = Visibility.Visible;
+            UpdatePageDots();
+            UpdateStatusText();
+
+            if (animateDirection != 0)
+            {
+                AnimateMainPage(animateDirection, outgoingSnapshot);
+            }
+
+            return;
+        }
+
+        AppGrid.Visibility = Visibility.Visible;
+        InvalidAppsPage.Visibility = Visibility.Collapsed;
+
         var pageItems = _filteredApps
             .Skip(_currentPage * PageSize)
             .Take(PageSize)
@@ -724,12 +810,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (animateDirection != 0)
         {
-            AnimatePage(animateDirection);
+            AnimateMainPage(animateDirection, outgoingSnapshot);
         }
     }
 
     private void UpdateStatusText()
     {
+        if (_currentPage < 0 && _invalidApps.Count > 0)
+        {
+            StatusText.Visibility = Visibility.Collapsed;
+            PageHost.Visibility = Visibility.Visible;
+            PageDots.Visibility = Visibility.Visible;
+            return;
+        }
+
         if (_isCatalogLoading && _allApps.Count == 0)
         {
             StatusText.Text = "正在载入应用...";
@@ -763,7 +857,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var pageApps = _filteredApps
             .Skip(pageIndex * PageSize)
             .Take(PageSize)
-            .SelectMany(app => app.IsFolder ? app.Children.Take(9) : new[] { app })
+            .SelectMany(app => app.IsFolder ? app.PreviewChildren : new[] { app })
             .Where(app => !app.IsFolder)
             .Where(app => app.Icon == null)
             .ToList();
@@ -923,7 +1017,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 if (app.IsFolder)
                 {
-                    foreach (var child in app.Children.Take(9))
+                    foreach (var child in app.PreviewChildren)
                     {
                         retainedIds.Add(child.Id);
                     }
@@ -962,7 +1056,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void GoToPage(int pageIndex)
     {
-        if (pageIndex < 0 || pageIndex >= PageCount || pageIndex == _currentPage)
+        if (pageIndex == -1 && _invalidApps.Count == 0)
+        {
+            return;
+        }
+
+        if (pageIndex < -1 || pageIndex >= PageCount)
+        {
+            return;
+        }
+
+        if (_isMainPageAnimating)
+        {
+            _pendingMainPage = pageIndex == _currentPage ? null : pageIndex;
+            return;
+        }
+
+        if (pageIndex == _currentPage)
         {
             return;
         }
@@ -977,11 +1087,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void GoToPageByDelta(int delta)
+    {
+        var basePage = _pendingMainPage ?? _currentPage;
+        var minPage = _invalidApps.Count > 0 ? -1 : 0;
+        GoToPage(Math.Clamp(basePage + delta, minPage, PageCount - 1));
+    }
+
     private void UpdatePageDots()
     {
         PageDots.Children.Clear();
 
-        if (PageCount <= 1)
+        if (_invalidApps.Count > 0)
+        {
+            var active = _currentPage < 0;
+            var trash = new Border
+            {
+                Width = 14,
+                Height = 14,
+                CornerRadius = new CornerRadius(7),
+                Margin = new Thickness(5, 0, 5, 0),
+                Background = active ? Brushes.White : new SolidColorBrush(Color.FromArgb(112, 255, 255, 255)),
+                Opacity = active ? 0.92 : 0.72,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Tag = -1
+            };
+
+            trash.Child = new TextBlock
+            {
+                Text = "\uE74D",
+                FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+                FontSize = 9,
+                Foreground = active ? Brushes.Black : Brushes.White,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center
+            };
+
+            trash.MouseLeftButtonDown += (_, _) => GoToPage(-1);
+            PageDots.Children.Add(trash);
+        }
+
+        if (PageCount <= 1 && _invalidApps.Count == 0)
         {
             return;
         }
@@ -1013,26 +1159,195 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private void AnimatePage(int direction)
+    private void ConfirmInvalidAppsButton_Click(object sender, RoutedEventArgs e)
     {
-        PageTranslate.BeginAnimation(TranslateTransform.XProperty, null);
-        PageHost.BeginAnimation(OpacityProperty, null);
+        _invalidApps.Clear();
+        LaunchpadOrderStore.SaveLayout(_baseApps);
+        _currentPage = 0;
+        RefreshVisiblePage(animateDirection: 1);
+        QueuePreloadPages();
+    }
 
-        PageTranslate.X = direction > 0 ? 58 : -58;
-        PageHost.Opacity = 0.82;
+    private ImageSource? CaptureVisibleMainPageSnapshot()
+    {
+        StopMainPageAnimations(resetSnapshot: true);
 
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var slide = new DoubleAnimation(0, PageSlideDuration)
+        FrameworkElement? page = InvalidAppsPage.Visibility == Visibility.Visible
+            ? InvalidAppsPage
+            : AppGrid.Visibility == Visibility.Visible ? AppGrid : null;
+
+        return CaptureElementSnapshot(page);
+    }
+
+    private static ImageSource? CaptureElementSnapshot(FrameworkElement? element)
+    {
+        if (element == null || !element.IsVisible || element.ActualWidth <= 1 || element.ActualHeight <= 1)
+        {
+            return null;
+        }
+
+        element.UpdateLayout();
+        var dpi = VisualTreeHelper.GetDpi(element);
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(element.ActualWidth * dpi.DpiScaleX));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(element.ActualHeight * dpi.DpiScaleY));
+        var bitmap = new RenderTargetBitmap(
+            pixelWidth,
+            pixelHeight,
+            96 * dpi.DpiScaleX,
+            96 * dpi.DpiScaleY,
+            PixelFormats.Pbgra32);
+
+        bitmap.Render(element);
+        if (bitmap.CanFreeze)
+        {
+            bitmap.Freeze();
+        }
+
+        return bitmap;
+    }
+
+    private void AnimateMainPage(int direction, ImageSource? outgoingSnapshot)
+    {
+        StopMainPageAnimations(resetSnapshot: false);
+        _isMainPageAnimating = true;
+        var generation = ++_mainPageAnimationGeneration;
+
+        var incomingTranslate = InvalidAppsPage.Visibility == Visibility.Visible
+            ? InvalidPageTranslate
+            : AppGridTranslate;
+        var idleTranslate = ReferenceEquals(incomingTranslate, AppGridTranslate)
+            ? InvalidPageTranslate
+            : AppGridTranslate;
+
+        idleTranslate.X = 0;
+        AnimateSlidingPages(
+            direction,
+            Math.Max(AppGrid.ActualWidth, AppGridWidth),
+            MainPageSnapshot,
+            MainPageSnapshotTranslate,
+            incomingTranslate,
+            outgoingSnapshot,
+            () => CompleteMainPageAnimation(generation));
+    }
+
+    private void AnimateFolderPage(int direction, ImageSource? outgoingSnapshot)
+    {
+        FolderItemsTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        FolderPageSnapshotTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        _isFolderPageAnimating = true;
+        var generation = ++_folderPageAnimationGeneration;
+
+        AnimateSlidingPages(
+            direction,
+            Math.Max(FolderItemsGrid.ActualWidth, FolderTileWidth * FolderColumns),
+            FolderPageSnapshot,
+            FolderPageSnapshotTranslate,
+            FolderItemsTranslate,
+            outgoingSnapshot,
+            () => CompleteFolderPageAnimation(generation));
+    }
+
+    private void AnimateSlidingPages(
+        int direction,
+        double distance,
+        System.Windows.Controls.Image snapshotImage,
+        TranslateTransform snapshotTranslate,
+        TranslateTransform incomingTranslate,
+        ImageSource? outgoingSnapshot,
+        Action completed)
+    {
+        var signedDirection = direction >= 0 ? 1 : -1;
+        var slideDistance = Math.Max(1, distance);
+        var ease = new PowerEase { Power = 2.0, EasingMode = EasingMode.EaseInOut };
+
+        incomingTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        snapshotTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        incomingTranslate.X = signedDirection * slideDistance;
+
+        if (outgoingSnapshot != null)
+        {
+            snapshotImage.Source = outgoingSnapshot;
+            snapshotImage.Visibility = Visibility.Visible;
+            snapshotTranslate.X = 0;
+
+            var outgoing = new DoubleAnimation(-signedDirection * slideDistance, PageSlideDuration)
+            {
+                EasingFunction = ease
+            };
+            snapshotTranslate.BeginAnimation(TranslateTransform.XProperty, outgoing);
+        }
+        else
+        {
+            snapshotImage.Visibility = Visibility.Collapsed;
+            snapshotImage.Source = null;
+            snapshotTranslate.X = 0;
+        }
+
+        var incoming = new DoubleAnimation(0, PageSlideDuration)
         {
             EasingFunction = ease
         };
-        var fade = new DoubleAnimation(1, PageFadeDuration)
+        incoming.Completed += (_, _) =>
         {
-            EasingFunction = ease
+            snapshotImage.Visibility = Visibility.Collapsed;
+            snapshotImage.Source = null;
+            snapshotTranslate.X = 0;
+            incomingTranslate.X = 0;
+            completed();
         };
+        incomingTranslate.BeginAnimation(TranslateTransform.XProperty, incoming);
+    }
 
-        PageTranslate.BeginAnimation(TranslateTransform.XProperty, slide);
-        PageHost.BeginAnimation(OpacityProperty, fade);
+    private void CompleteMainPageAnimation(int generation)
+    {
+        if (generation != _mainPageAnimationGeneration)
+        {
+            return;
+        }
+
+        _isMainPageAnimating = false;
+        if (_pendingMainPage is { } target && target != _currentPage)
+        {
+            _pendingMainPage = null;
+            GoToPage(target);
+            return;
+        }
+
+        _pendingMainPage = null;
+    }
+
+    private void CompleteFolderPageAnimation(int generation)
+    {
+        if (generation != _folderPageAnimationGeneration)
+        {
+            return;
+        }
+
+        _isFolderPageAnimating = false;
+        if (_pendingFolderPage is { } target && target != _folderPage)
+        {
+            _pendingFolderPage = null;
+            GoToFolderPage(target);
+            return;
+        }
+
+        _pendingFolderPage = null;
+    }
+
+    private void StopMainPageAnimations(bool resetSnapshot)
+    {
+        AppGridTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        InvalidPageTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        MainPageSnapshotTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        AppGridTranslate.X = 0;
+        InvalidPageTranslate.X = 0;
+        MainPageSnapshotTranslate.X = 0;
+
+        if (resetSnapshot)
+        {
+            MainPageSnapshot.Visibility = Visibility.Collapsed;
+            MainPageSnapshot.Source = null;
+        }
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1186,11 +1501,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (e.Delta < 0)
         {
-            GoToPage(_currentPage + 1);
+            GoToPageByDelta(1);
         }
         else if (e.Delta > 0)
         {
-            GoToPage(_currentPage - 1);
+            GoToPageByDelta(-1);
         }
     }
 
@@ -1711,14 +2026,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             && relative.Y <= element.ActualHeight;
     }
 
+    private bool IsPointerInsideAppIconHitArea(System.Windows.Controls.Button button, bool isFolderPageItem)
+    {
+        var point = Mouse.GetPosition(button);
+        var width = button.ActualWidth > 0
+            ? button.ActualWidth
+            : isFolderPageItem ? FolderIconHitSize : AppIconHitSize;
+        var height = button.ActualHeight > 0
+            ? button.ActualHeight
+            : isFolderPageItem ? FolderIconHitSize : AppIconHitSize;
+
+        return point.X >= 0
+            && point.Y >= 0
+            && point.X <= width
+            && point.Y <= height;
+    }
+
     private void UpdateEdgePageHover(Point point)
     {
         var direction = 0;
-        if (point.X <= EdgeZoneWidth && _currentPage > 0)
+        if (point.X <= EdgeZoneWidth && CanGoToPreviousPage())
         {
             direction = -1;
         }
-        else if (point.X >= ActualWidth - EdgeZoneWidth && _currentPage < PageCount - 1)
+        else if (point.X >= ActualWidth - EdgeZoneWidth && CanGoToNextPage())
         {
             direction = 1;
         }
@@ -1746,10 +2077,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void SetEdgeZonesVisible(bool visible)
     {
-        var canPage = visible && PageCount > 1;
-        LeftPageZone.Visibility = canPage && _currentPage > 0 ? Visibility.Visible : Visibility.Collapsed;
-        RightPageZone.Visibility = canPage && _currentPage < PageCount - 1 ? Visibility.Visible : Visibility.Collapsed;
+        LeftPageZone.Visibility = visible && CanGoToPreviousPage() ? Visibility.Visible : Visibility.Collapsed;
+        RightPageZone.Visibility = visible && CanGoToNextPage() ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private bool CanGoToPreviousPage() => _currentPage > 0 || (_currentPage == 0 && _invalidApps.Count > 0);
+
+    private bool CanGoToNextPage() => _currentPage < PageCount - 1;
 
     private void CompleteManualDrag()
     {
@@ -1887,8 +2221,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (sender is System.Windows.Controls.Button { Tag: AppInfo app })
+        if (sender is System.Windows.Controls.Button { Tag: AppInfo app } button)
         {
+            if (!IsPointerInsideAppIconHitArea(button, isFolderPageItem: false))
+            {
+                return;
+            }
+
             if (app.IsFolder)
             {
                 OpenFolder(app);
@@ -1907,6 +2246,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var isFolderPageItem = FolderItemsGrid.IsAncestorOf(button);
+        if (!IsPointerInsideAppIconHitArea(button, isFolderPageItem))
+        {
+            e.Handled = true;
+            return;
+        }
+
         var menu = button.ContextMenu;
         if (menu == null)
         {
@@ -1915,7 +2261,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SetMenuItemState(menu, "OpenLocation", Visibility.Visible, CanOpenAppLocation(app));
         SetMenuItemState(menu, "RunAsAdmin", Visibility.Visible, CanRunAppAsAdministrator(app));
-        SetMenuItemState(menu, "Uninstall", Visibility.Visible, CanUninstallApp(app));
+        SetMenuItemState(menu, "Uninstall", CanUninstallApp(app) ? Visibility.Visible : Visibility.Collapsed, true);
         SetMenuItemState(menu, "PinToDock", Visibility.Visible, CanPinAppToDock(app));
         SetMenuItemState(menu, "Hide", app.IsHidden ? Visibility.Collapsed : Visibility.Visible, !app.IsSettingsApp);
         SetMenuItemState(menu, "Unhide", app.IsHidden ? Visibility.Visible : Visibility.Collapsed, !app.IsSettingsApp);
@@ -2045,7 +2391,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static bool CanUninstallApp(AppInfo app)
     {
-        return !app.IsFolder && !app.IsSettingsApp;
+        return !app.IsFolder && !app.IsSettingsApp && !app.IsStartMenuNonAppFile;
     }
 
     private static void OpenAppLocation(AppInfo app)
@@ -2279,7 +2625,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void AppButton_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStartPoint = e.GetPosition(this);
-        _pendingDragApp = sender is System.Windows.Controls.Button { Tag: AppInfo app } ? app : null;
+        if (_settings.SortMode == LaunchpadSortMode.Alphabetical)
+        {
+            _pendingDragApp = null;
+            _pendingDragSourceFolder = null;
+            return;
+        }
+
+        _pendingDragApp = sender is System.Windows.Controls.Button { Tag: AppInfo app } button
+            && IsPointerInsideAppIconHitArea(button, isFolderPageItem: false)
+            ? app
+            : null;
         _pendingDragSourceFolder = null;
     }
 
@@ -2555,7 +2911,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Id = folderId,
             Name = "文件夹",
             IsFolder = true,
-            IconKey = folderId
+            IconKey = folderId,
+            ShowHiddenChildrenInPreview = _settings.ShowHiddenApps
         };
         folder.Children.Add(target);
         folder.Children.Add(dragged);
@@ -2581,9 +2938,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _suppressFolderNameChange = false;
 
         FolderOverlay.Visibility = Visibility.Visible;
+        PageHost.CacheMode = null;
+        PageHost.Effect = new System.Windows.Media.Effects.BlurEffect
+        {
+            Radius = 10,
+            KernelType = System.Windows.Media.Effects.KernelType.Gaussian
+        };
         RefreshVisibleFolderPage();
-        FolderNameBox.Focus();
-        FolderNameBox.SelectAll();
+        Keyboard.ClearFocus();
         _ = HydrateFolderIconsAsync(folder, _folderPage);
     }
 
@@ -2593,6 +2955,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             var token = _catalogCts?.Token ?? CancellationToken.None;
             var apps = folder.Children
+                .Where(ShouldShowApp)
                 .Skip(pageIndex * FolderPageSize)
                 .Take(FolderPageSize)
                 .Where(app => app.Icon == null)
@@ -2620,14 +2983,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CloseFolder()
     {
+        if (FolderNameBox.IsKeyboardFocusWithin)
+        {
+            Keyboard.ClearFocus();
+        }
+
         FolderOverlay.Visibility = Visibility.Collapsed;
+        PageHost.Effect = null;
+        PageHost.CacheMode = null;
         _visibleFolderApps.Clear();
         FolderPageDots.Children.Clear();
+        FolderItemsTranslate.X = 0;
+        FolderPageSnapshotTranslate.X = 0;
+        FolderPageSnapshot.Source = null;
+        FolderPageSnapshot.Visibility = Visibility.Collapsed;
         _openFolder = null;
         _folderPage = 0;
     }
 
-    private void RefreshVisibleFolderPage()
+    private void RefreshVisibleFolderPage(int animateDirection = 0)
     {
         if (_openFolder == null)
         {
@@ -2636,6 +3010,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var outgoingSnapshot = animateDirection != 0 ? CaptureElementSnapshot(FolderItemsGrid) : null;
         var visibleChildren = GetVisibleFolderChildren();
         var pageCount = GetFolderPageCount(visibleChildren.Count);
         _folderPage = Math.Clamp(_folderPage, 0, pageCount - 1);
@@ -2648,6 +3023,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         UpdateFolderPageDots();
         _ = HydrateFolderIconsAsync(_openFolder, _folderPage);
+
+        if (animateDirection != 0)
+        {
+            AnimateFolderPage(animateDirection, outgoingSnapshot);
+        }
     }
 
     private int FolderPageCount => _openFolder == null
@@ -2662,13 +3042,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void GoToFolderPage(int pageIndex)
     {
-        if (_openFolder == null || pageIndex < 0 || pageIndex >= FolderPageCount || pageIndex == _folderPage)
+        if (_openFolder == null || pageIndex < 0 || pageIndex >= FolderPageCount)
         {
             return;
         }
 
+        if (_isFolderPageAnimating)
+        {
+            _pendingFolderPage = pageIndex == _folderPage ? null : pageIndex;
+            return;
+        }
+
+        if (pageIndex == _folderPage)
+        {
+            return;
+        }
+
+        var direction = pageIndex > _folderPage ? 1 : -1;
         _folderPage = pageIndex;
-        RefreshVisibleFolderPage();
+        RefreshVisibleFolderPage(direction);
+    }
+
+    private void GoToFolderPageByDelta(int delta)
+    {
+        var basePage = _pendingFolderPage ?? _folderPage;
+        GoToFolderPage(Math.Clamp(basePage + delta, 0, FolderPageCount - 1));
     }
 
     private void UpdateFolderPageDots()
@@ -2718,11 +3116,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (e.Delta < 0)
         {
-            GoToFolderPage(_folderPage + 1);
+            GoToFolderPageByDelta(1);
         }
         else if (e.Delta > 0)
         {
-            GoToFolderPage(_folderPage - 1);
+            GoToFolderPageByDelta(-1);
         }
 
         e.Handled = true;
@@ -2764,7 +3162,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (sender is System.Windows.Controls.Button { Tag: AppInfo app })
+        if (sender is System.Windows.Controls.Button { Tag: AppInfo app } button
+            && IsPointerInsideAppIconHitArea(button, isFolderPageItem: true))
         {
             LaunchApp(app);
         }
@@ -2773,7 +3172,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void FolderAppButton_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStartPoint = e.GetPosition(this);
-        _pendingDragApp = sender is System.Windows.Controls.Button { Tag: AppInfo app } ? app : null;
+        if (_settings.SortMode == LaunchpadSortMode.Alphabetical)
+        {
+            _pendingDragApp = null;
+            _pendingDragSourceFolder = null;
+            return;
+        }
+
+        _pendingDragApp = sender is System.Windows.Controls.Button { Tag: AppInfo app } button
+            && IsPointerInsideAppIconHitArea(button, isFolderPageItem: true)
+            ? app
+            : null;
         _pendingDragSourceFolder = _openFolder;
     }
 
@@ -2877,15 +3286,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var tileHeight = gridHeight / Rows;
         var iconSize = Clamp(Math.Min(tileWidth * 0.43, tileHeight * 0.63), 70, 112);
         var iconCellSize = iconSize + Clamp(iconSize * 0.10, 7, 12);
+        var appIconHitSize = Math.Min(Math.Min(tileWidth, tileHeight), iconSize + 18);
         var folderPreviewSize = iconSize * 0.82;
         var folderPreviewIconSize = Clamp(folderPreviewSize / 3 - 4, 15, 26);
         var fontSize = Clamp(tileHeight * 0.09, 12, 15.5);
         var lineHeight = fontSize + 2.2;
         var folderPanelWidth = Clamp(width * 0.54, 840, 1120);
-        var folderPanelHeight = Clamp(height * 0.64, 620, 760);
+        var folderPanelHeight = Clamp(height * 0.70, 690, 820);
         var folderTileWidth = (folderPanelWidth - 52) / FolderColumns;
-        var folderTileHeight = (folderPanelHeight - 118) / FolderRows;
-        var folderIconSize = Clamp(Math.Min(folderTileWidth * 0.45, folderTileHeight * 0.66), 74, 104);
+        var folderTileHeight = (folderPanelHeight - 92) / FolderRows;
+        var folderIconSize = Clamp(Math.Min(folderTileWidth * 0.45, folderTileHeight * 0.56), 74, 104);
+        var folderIconHitSize = Math.Min(Math.Min(folderTileWidth, folderTileHeight), folderIconSize + 18);
         var dockIconSize = Clamp(width * 0.026, 48, 62);
         var dockSlot = dockIconSize + Clamp(dockIconSize * 0.24, 10, 15);
         var dockBackgroundHeight = dockIconSize + 34;
@@ -2897,6 +3308,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetLayoutValue(ref _tileHeight, tileHeight, nameof(TileHeight));
         SetLayoutValue(ref _iconSize, iconSize, nameof(IconSize));
         SetLayoutValue(ref _iconCellSize, iconCellSize, nameof(IconCellSize));
+        SetLayoutValue(ref _appIconHitSize, appIconHitSize, nameof(AppIconHitSize));
         SetLayoutValue(ref _folderPreviewSize, folderPreviewSize, nameof(FolderPreviewSize));
         SetLayoutValue(ref _folderPreviewIconSize, folderPreviewIconSize, nameof(FolderPreviewIconSize));
         SetLayoutValue(ref _appNameFontSize, fontSize, nameof(AppNameFontSize));
@@ -2908,6 +3320,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetLayoutValue(ref _folderTileWidth, folderTileWidth, nameof(FolderTileWidth));
         SetLayoutValue(ref _folderTileHeight, folderTileHeight, nameof(FolderTileHeight));
         SetLayoutValue(ref _folderIconSize, folderIconSize, nameof(FolderIconSize));
+        SetLayoutValue(ref _folderIconHitSize, folderIconHitSize, nameof(FolderIconHitSize));
         SetLayoutValue(ref _dockIconSize, dockIconSize, nameof(DockIconSize));
         SetLayoutValue(ref _dockItemSlotWidth, dockSlot, nameof(DockItemSlotWidth));
         SetLayoutValue(ref _dockItemHeight, dockBackgroundHeight, nameof(DockItemHeight));

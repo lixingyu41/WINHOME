@@ -83,6 +83,64 @@ internal static class LaunchpadOrderStore
         return ordered;
     }
 
+    public static IReadOnlyList<AppInfo> FindMissingApps(
+        IReadOnlyList<AppInfo> currentApps,
+        IReadOnlyList<AppInfo> knownApps,
+        IEnumerable<string> selectedExtensions)
+    {
+        var layout = LoadLayout();
+        if (layout.Items.Count == 0 || knownApps.Count == 0)
+        {
+            return Array.Empty<AppInfo>();
+        }
+
+        var currentIds = currentApps
+            .Where(app => !app.IsFolder)
+            .Select(app => app.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentLaunchKinds = currentApps
+            .Where(app => !app.IsFolder)
+            .Select(app => app.LaunchKind)
+            .ToHashSet();
+        var knownById = knownApps
+            .Where(app => !app.IsFolder)
+            .GroupBy(app => app.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var missing = new List<AppInfo>();
+
+        foreach (var id in EnumerateSavedAppIds(layout).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (currentIds.Contains(id) || !knownById.TryGetValue(id, out var knownApp))
+            {
+                continue;
+            }
+
+            if (knownApp.LaunchKind != AppLaunchKind.File)
+            {
+                if (currentLaunchKinds.Contains(knownApp.LaunchKind))
+                {
+                    missing.Add(knownApp);
+                }
+
+                continue;
+            }
+
+            var extension = string.IsNullOrWhiteSpace(knownApp.StartMenuExtension)
+                ? Path.GetExtension(knownApp.LaunchCommand)
+                : knownApp.StartMenuExtension;
+            if (!StartMenuExtensionOptions.IsVisible(selectedExtensions, extension))
+            {
+                continue;
+            }
+
+            missing.Add(knownApp);
+        }
+
+        return missing
+            .OrderBy(app => app.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
     public static void SaveLayout(IEnumerable<AppInfo> apps)
     {
         try
@@ -108,6 +166,34 @@ internal static class LaunchpadOrderStore
     }
 
     public static string NewFolderId() => "folder:" + Guid.NewGuid().ToString("N");
+
+    private static IEnumerable<string> EnumerateSavedAppIds(LayoutModel layout)
+    {
+        foreach (var item in layout.Items)
+        {
+            var childItems = item.ChildItems.Count > 0
+                ? item.ChildItems
+                : item.Children.Select(id => new LayoutChildItem { Id = id }).ToList();
+
+            if (childItems.Count > 0)
+            {
+                foreach (var child in childItems)
+                {
+                    if (!string.IsNullOrWhiteSpace(child.Id))
+                    {
+                        yield return child.Id;
+                    }
+                }
+
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.Id) && !item.Id.StartsWith("folder:", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return item.Id;
+            }
+        }
+    }
 
     private static LayoutItem ToLayoutItem(AppInfo app)
     {
